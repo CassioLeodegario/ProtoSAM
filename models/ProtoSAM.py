@@ -678,6 +678,75 @@ class ProtoSAM(nn.Module):
         return pred, scores
     
     
+class MultiClassProtoSAM(nn.Module):
+    """
+    Wrapper around ProtoSAM for multi-class / multi-instance segmentation.
+
+    Runs ProtoSAM independently for each class using class-specific support sets,
+    then merges the per-class binary predictions into a single label map.
+    Conflict resolution: when multiple classes claim the same pixel, the class
+    with the higher average SAM confidence score wins.
+    """
+
+    def __init__(self, protosam: 'ProtoSAM'):
+        super().__init__()
+        self.protosam = protosam
+
+    def forward(self, query_image: torch.Tensor, class_inputs: dict, degrees_rotate: int = 0):
+        """
+        query_image: (1, C, H, W) tensor
+        class_inputs: dict mapping class_id (int) -> SegmentationInput
+            Each value is a coarse-model input already prepared for that class.
+
+        Returns:
+            pred_map      : (H, W) long tensor — pixel-wise class labels (0 = background)
+            scores_per_class : dict mapping class_id -> list of SAM scores
+        """
+        H, W = query_image.shape[-2:]
+        device = query_image.device
+        pred_map = torch.zeros(H, W, dtype=torch.long, device=device)
+        conf_map = torch.zeros(H, W, dtype=torch.float, device=device)
+        scores_per_class = {}
+
+        for class_id, coarse_input in class_inputs.items():
+            pred, scores = self.protosam(query_image, coarse_input, degrees_rotate)
+            scores_per_class[class_id] = scores
+
+            if isinstance(pred, np.ndarray):
+                pred = torch.from_numpy(pred)
+            pred = pred.to(device)
+
+            if pred.max() == 0:
+                continue
+
+            valid_scores = [s for s in scores if s is not None]
+            conf = float(np.mean(valid_scores)) if valid_scores else 0.0
+
+            fg_mask = pred > 0
+            # Assign this class where it predicts foreground and either
+            # the pixel is unassigned or this class has higher confidence.
+            update_mask = fg_mask & ((pred_map == 0) | (conf_map < conf))
+            pred_map[update_mask] = class_id
+            conf_map[update_mask] = conf
+
+        return pred_map, scores_per_class
+
+    def eval(self):
+        self.protosam.eval()
+        return self
+
+    def train(self, mode=True):
+        self.protosam.train(mode)
+        return self
+
+    def parameters(self):
+        return self.protosam.parameters()
+
+    def to(self, device):
+        self.protosam.to(device)
+        return self
+
+
 def show_mask(mask, ax, random_color=False):
     if random_color:
         color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)

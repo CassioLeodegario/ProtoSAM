@@ -119,6 +119,7 @@ do
             path.log_dir=$LOGDIR \
             support_idx=$SUPP_ID \
             lora=$LORA \
+"do_cca=$DO_CCA" \
             "input_size=($INPUT_SIZE, $INPUT_SIZE)"
     done
 done

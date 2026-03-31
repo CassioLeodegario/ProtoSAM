@@ -258,7 +258,7 @@ def get_support_set_alpds(config, dataset:ValidationDataset):
 
 
 def get_support_set(_config, dataset):
-    if _config["dataset"].lower() == POLYPS:
+    if _config["dataset"].lower().startswith(POLYPS):
         support_images, support_fg_masks, case = get_support_set_polyps(_config, dataset)
     elif any(item in _config["dataset"].lower() for item in ALP_DS):
         support_images, support_fg_masks, support_scan_id = get_support_set_alpds(_config, dataset)
@@ -304,7 +304,7 @@ def main(_run, _config, _log):
     model.eval()
     
     sam_trans = ResizeLongestSide(1024)
-    if _config["dataset"].lower() == POLYPS:
+    if _config["dataset"].lower().startswith(POLYPS):
         tr_dataset, te_dataset = get_polyp_dataset(sam_trans=sam_trans, image_size=(1024, 1024))
     elif CHAOS in _config["dataset"].lower() or SABS in _config["dataset"].lower():
         tr_dataset, te_dataset = get_nii_dataset(_config, _config["input_size"][0]) 
@@ -341,7 +341,7 @@ def main(_run, _config, _log):
     all_support_images, all_support_fg_mask, support_scan_id = None, None, None
     MAX_SUPPORT_IMAGES = 1
     is_alp_ds = any(item in _config["dataset"].lower() for item in ALP_DS)
-    is_polyp_ds  = _config["dataset"].lower() == POLYPS
+    is_polyp_ds = _config["dataset"].lower().startswith(POLYPS)
     
     if is_alp_ds:
         all_support_images, all_support_fg_mask, support_scan_id = get_support_set(_config, te_dataset)

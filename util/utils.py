@@ -493,51 +493,67 @@ def get_connected_components(query_pred_original, query_pred_logits, return_conf
     
     return cca_output, None
 
-def cca(query_pred_original, query_pred_logits, return_conf=False, return_cc=False):
+def cca(query_pred_original, query_pred_logits, return_conf=False, return_cc=False, threshold=None):
     '''
-    Performs connected component analysis on the query_pred and returns the most confident connected component
-    '''
-    # cca_output = cv2.connectedComponentsWithStats(query_pred_original.astype(np.uint8), connectivity=8) # TODO try 8
-    # # calc confidence for each connected component
-    # cca_conf = []
-    # for j in range(cca_output[0]):
-    #     if j == 0:
-    #         cca_conf.append(0) # background
-    #         continue
-    #     cca_conf.append((query_pred_logits.softmax(1)[:,1].flatten(1).cpu().detach().numpy() * (cca_output[1] == j).flatten()).sum() / ((cca_output[1] == j).flatten().sum() + 1e-6) * ((cca_output[1] == j).flatten().sum() / (query_pred_original.flatten().sum() + 1e-6))) # take into account the area of the connected component
-    cca_output, cca_conf = get_connected_components(query_pred_original, query_pred_logits, return_conf=True)
-    
-    # find the most confident connected component, find max conf and its key
-    max_conf = cca_conf[0]
-    for k,v in cca_conf.items():
-        if v > max_conf:
-            max_conf = v
-            max_key = k
-        
-    if max_conf == 0:
-        # no connected component found, use zeros
-        query_pred = np.zeros_like(query_pred_original)
-    else:
-        # zero out all other connected components
-        new_cca_output = list(cca_output)
-        new_cca_output[0] = 2  # bg + fg
-        new_cca_output[1] = np.where(cca_output[1] != max_key, 0, 1)  # binarize the max_key
-        new_cca_output[2] = cca_output[2][[0, max_key]]
-        new_cca_output[3] = cca_output[3][[0, max_key]]
-        cca_output = tuple(new_cca_output)
+    Performs connected component analysis on the query_pred.
 
-        query_pred = (cca_output[1] == 1).astype(np.uint8)
-        # convert to binary mask
-        query_pred = (query_pred > 0).astype(np.uint8) 
-    
+    If threshold is None (default): returns the single most confident connected component.
+    If threshold >= 0: returns all connected components with confidence >= threshold.
+      Falls back to the single most confident component if none exceed the threshold.
+    '''
+    cca_output, cca_conf = get_connected_components(query_pred_original, query_pred_logits, return_conf=True)
+
+    # Build dict of foreground component confidences (exclude background key 0)
+    fg_confs = {k: v for k, v in cca_conf.items() if k != 0}
+
+    if not fg_confs:
+        # No foreground components at all
+        keep_keys = []
+    elif threshold is not None:
+        keep_keys = [k for k, v in fg_confs.items() if v >= threshold]
+        if not keep_keys:
+            # Fallback: keep single best component
+            best_key = max(fg_confs, key=fg_confs.get)
+            keep_keys = [best_key] if fg_confs[best_key] > 0 else []
+    else:
+        # Original behaviour: keep only the single best component
+        best_key = max(fg_confs, key=fg_confs.get)
+        keep_keys = [best_key] if fg_confs[best_key] > 0 else []
+
+    if not keep_keys:
+        if return_cc:
+            empty = list(cca_output)
+            empty[0] = 1
+            empty[1] = np.zeros_like(cca_output[1])
+            return tuple(empty)
+        query_pred = np.zeros_like(query_pred_original)
+        if return_conf:
+            return query_pred, 0
+        return query_pred
+
+    # Renumber kept components 1..N in a new label map
+    new_labels = np.zeros_like(cca_output[1])
+    for new_id, old_key in enumerate(keep_keys, start=1):
+        new_labels[cca_output[1] == old_key] = new_id
+
+    kept_indices = [0] + keep_keys  # 0 = background row
+    new_cca_output = (
+        len(keep_keys) + 1,
+        new_labels,
+        cca_output[2][kept_indices],
+        cca_output[3][kept_indices],
+    )
+
     if return_cc:
-        return cca_output
-    
+        return new_cca_output
+
+    query_pred = (new_labels > 0).astype(np.uint8)
     query_pred_original = query_pred_original * query_pred
-    
+
     if return_conf:
-        return query_pred_original, max_conf
-    
+        best_conf = max(fg_confs[k] for k in keep_keys)
+        return query_pred_original, best_conf
+
     return query_pred_original
 
 def set_seed(seed):

@@ -321,12 +321,13 @@ class PolypDataset(data.Dataset):
         image and gt are expected to be output from self.cv2_loader
         """
         original_size = tuple(image.shape[-2:])
+        mask = gt
         if self.augmentations:
             image, mask = self.augmentations(image, gt)
         
         if self.sam_trans:
-            image, mask = self.sam_trans.apply_image_torch(
-                image.unsqueeze(0)), self.sam_trans.apply_image_torch(mask)
+            image = self.sam_trans.apply_image_torch(image.unsqueeze(0))
+            mask = self.sam_trans.apply_image_torch(mask.unsqueeze(0).unsqueeze(0).float()).squeeze(0).squeeze(0)
         elif image.max() <= 255 and image.min() >= 0:
             image = (image - self.mean) / self.std
         mask[mask > 0.5] = 1
@@ -396,10 +397,11 @@ class PolypDataset(data.Dataset):
         if is_mask:
             img = cv2.imread(path, 0)
             img[img > 0] = 1
+            return torch.from_numpy(img).float()
         else:
             img = cv2.cvtColor(cv2.imread(
                 path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
-        return img
+            return torch.from_numpy(img).permute(2, 0, 1).float()
 
     def resize(self, img, gt):
         assert img.size == gt.size

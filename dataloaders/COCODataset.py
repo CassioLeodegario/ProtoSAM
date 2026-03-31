@@ -221,11 +221,25 @@ class COCODataset(data.Dataset):
         if self.augmentations:
             image, mask = self.augmentations(image, mask)
 
+        # Multi-class label maps (category_id=None mode) contain integer IDs and
+        # must be resized with nearest-neighbor to avoid corrupting those values.
+        is_multiclass = self.category_id is None
+
         if self.sam_trans is not None:
             image = self.sam_trans.apply_image_torch(image.unsqueeze(0))
-            mask = self.sam_trans.apply_image_torch(
-                mask.unsqueeze(0).unsqueeze(0).float()
-            ).squeeze(0).squeeze(0)
+            if is_multiclass:
+                target_size = self.sam_trans.get_preprocess_shape(
+                    mask.shape[-2], mask.shape[-1], self.sam_trans.target_length
+                )
+                mask = F.interpolate(
+                    mask.unsqueeze(0).unsqueeze(0).float(), size=target_size, mode='nearest'
+                ).squeeze(0).squeeze(0)
+            else:
+                mask = self.sam_trans.apply_image_torch(
+                    mask.unsqueeze(0).unsqueeze(0).float()
+                ).squeeze(0).squeeze(0)
+                mask[mask > 0.5] = 1
+                mask[mask <= 0.5] = 0
         else:
             image = (image - self.mean) / self.std
             image = F.interpolate(

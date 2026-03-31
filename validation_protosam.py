@@ -23,6 +23,7 @@ from models.segment_anything.utils.transforms import ResizeLongestSide
 from models.SamWrapper import SamWrapper
 # from dataloaders.PolypDataset import get_polyp_dataset, get_vps_easy_unseen_dataset, get_vps_hard_unseen_dataset, PolypDataset, KVASIR, CVC300, COLON_DB, ETIS_DB, CLINIC_DB
 from dataloaders.PolypDataset import get_polyp_dataset, PolypDataset
+from dataloaders.COCODataset import COCODataset
 from dataloaders.PolypTransforms import get_polyp_transform
 from dataloaders.SimpleDataset import SimpleDataset
 from dataloaders.ManualAnnoDatasetv2 import get_nii_dataset
@@ -41,6 +42,7 @@ os.environ['TORCH_HOME'] = "./pretrained_model"
 CHAOS = "chaos"
 SABS = "sabs"
 POLYPS = "polyps"
+COCO = "coco"
 
 ALP_DS = [CHAOS, SABS]
 
@@ -245,7 +247,15 @@ def get_model(_config) -> ProtoSAM:
 def get_support_set_polyps(_config, dataset:PolypDataset):
     n_support = _config["n_support"]
     (support_images, support_labels, case) = dataset.get_support(n_support=n_support)
-    
+
+    return support_images, support_labels, case
+
+
+def get_support_set_coco(_config, dataset: COCODataset):
+    support_images, support_labels, case = dataset.get_support(
+        category_id=_config["coco_category_id"],
+        n_support=_config["n_support"],
+    )
     return support_images, support_labels, case
 
 
@@ -307,7 +317,19 @@ def main(_run, _config, _log):
     if _config["dataset"].lower().startswith(POLYPS):
         tr_dataset, te_dataset = get_polyp_dataset(sam_trans=sam_trans, image_size=(1024, 1024))
     elif CHAOS in _config["dataset"].lower() or SABS in _config["dataset"].lower():
-        tr_dataset, te_dataset = get_nii_dataset(_config, _config["input_size"][0]) 
+        tr_dataset, te_dataset = get_nii_dataset(_config, _config["input_size"][0])
+    elif _config["dataset"].lower() == COCO:
+        ann_file = _config["coco_ann_file"]
+        coco_ds = COCODataset(
+            image_dir=_config["coco_image_dir"],
+            ann_file=ann_file,
+            image_size=(1024, 1024),
+            category_id=_config["coco_category_id"],
+            sam_trans=sam_trans,
+        )
+        # Use the same dataset for support and query (val2017 only scenario)
+        tr_dataset = coco_ds
+        te_dataset = coco_ds
     else:
         raise NotImplementedError(
             f"dataset {_config['dataset']} not implemented")
@@ -342,11 +364,15 @@ def main(_run, _config, _log):
     MAX_SUPPORT_IMAGES = 1
     is_alp_ds = any(item in _config["dataset"].lower() for item in ALP_DS)
     is_polyp_ds = _config["dataset"].lower().startswith(POLYPS)
-    
+    is_coco_ds = _config["dataset"].lower() == COCO
+
     if is_alp_ds:
         all_support_images, all_support_fg_mask, support_scan_id = get_support_set(_config, te_dataset)
     elif is_polyp_ds:
         support_images, support_fg_mask, case = get_support_set_polyps(_config, tr_dataset)
+    elif is_coco_ds:
+        support_images, support_fg_mask, case = get_support_set_coco(_config, tr_dataset)
+        _log.info(f'COCO support set: category="{case}", n={len(support_images)}')
         
     with tqdm(testloader) as pbar: 
         for idx, sample_batched in enumerate(tqdm(testloader)):
@@ -392,8 +418,9 @@ def main(_run, _config, _log):
                 if is_alp_ds:
                     save_path = f'debug/preds/{case}_{sample_batched["z_id"].item()}_{idx}_{n_try}.png'
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                elif is_polyp_ds:
+                else:
                     save_path = f'debug/preds/{case}_{idx}_{n_try}.png'
+                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 plot_pred_gt_support(query_images[0,0].cpu(), query_pred.cpu(), query_labels[0].cpu(
                 ), support_images, support_fg_mask, save_path=save_path, score=scores[0])
 

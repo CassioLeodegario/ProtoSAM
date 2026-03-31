@@ -17,9 +17,9 @@ PROTO_GRID=8 # using 32 / 8 = 4, 4-by-4 prototype pooling window during training
 ALL_EV=( 0 ) # 5-fold cross validation (0, 1, 2, 3, 4)
 SEED=42
 
-if [ $MODALITY != "ct" ] && [ $MODALITY != "mri" ] && [ $MODALITY != "polyp" ]
+if [ $MODALITY != "ct" ] && [ $MODALITY != "mri" ] && [ $MODALITY != "polyp" ] && [ $MODALITY != "coco" ]
 then
-    echo "modality must be either ct ,mri or polyp"
+    echo "modality must be: ct, mri, polyp or coco"
     exit 1
 fi
 
@@ -35,8 +35,12 @@ if [ $MODALITY == "polyp" ]
 then
     DATASET='polyps'
 fi
+if [ $MODALITY == "coco" ]
+then
+    DATASET='coco'
+fi
 
-if [ $INPUT_SIZE -gt 256 ] 
+if [ $INPUT_SIZE -gt 256 ] && [ $MODALITY != "polyp" ] && [ $MODALITY != "coco" ]
 then
     DATASET=${DATASET}'_672'
 fi
@@ -51,6 +55,10 @@ ALL_SCALE=( "MIDDLE") # config of pseudolabels
 if [ $MODALITY == "polyp" ]
 then
     ORGAN="polyps"
+fi
+if [ $MODALITY == "coco" ]
+then
+    ORGAN="coco"
 fi
 
 FREE_DESC=""

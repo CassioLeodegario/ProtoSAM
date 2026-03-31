@@ -102,6 +102,10 @@ def cfg():
     use_neg_points=False
     n_support=1 # num support images
     protosam_sam_ver="sam_h" # or medsam
+    # COCO dataset
+    coco_image_dir='data/COCO/val2017'
+    coco_ann_file='data/COCO/annotations/instances_val2017.json'
+    coco_category_id=1  # 1=person, 18=dog, 62=chair, etc.
     grad_accumulation_steps=1
     ttt=False
     reset_after_slice=True # for TTT, if to reset the model after finetuning on each slice

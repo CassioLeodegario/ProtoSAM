@@ -8,6 +8,7 @@ from .alpmodule import MultiProtoAsConv
 from .backbone.torchvision_backbones import TVDeeplabRes101Encoder
 from util.consts import DEFAULT_FEATURE_SIZE
 from util.lora import inject_trainable_lora
+from models.vmamba import Backbone_VSSM
 # from util.utils import load_config_from_url, plot_dinov2_fts
 import math
 
@@ -70,6 +71,22 @@ class FewShotSeg(nn.Module):
                 'facebookresearch/dinov2', 'dinov2_vitb14')
             self.config['feature_hw'] = [max(
                 self.image_size//14, DEFAULT_FEATURE_SIZE), max(self.image_size//14, DEFAULT_FEATURE_SIZE)]
+        elif self.config['which_model'] == 'vmamba_tiny':
+            self.encoder = Backbone_VSSM(
+                out_indices=(3,),
+                pretrained='pretrained_model/vmamba_tiny_v2.pth',
+                depths=[2, 2, 5, 2], dims=96, drop_path_rate=0.2,
+                patch_size=4, in_chans=3, num_classes=1000,
+                ssm_d_state=1, ssm_ratio=2.0, ssm_dt_rank="auto", ssm_act_layer="silu",
+                ssm_conv=3, ssm_conv_bias=False, ssm_drop_rate=0.0,
+                ssm_init="v0", forward_type="v05_noz",
+                mlp_ratio=4.0, mlp_act_layer="gelu", mlp_drop_rate=0.0, gmlp=False,
+                patch_norm=True, norm_layer="ln2d",
+                downsample_version="v3", patchembed_version="v2",
+                use_checkpoint=False, posembed=False, imgsize=224,
+            )
+            self.config['feature_hw'] = [max(
+                self.image_size//32, DEFAULT_FEATURE_SIZE), max(self.image_size//32, DEFAULT_FEATURE_SIZE)]
         else:
             raise NotImplementedError(
                 f'Backbone network {self.config["which_model"]} not implemented')
@@ -96,6 +113,13 @@ class FewShotSeg(nn.Module):
             if HW < DEFAULT_FEATURE_SIZE ** 2:
                 img_fts = F.interpolate(img_fts, size=(
                     DEFAULT_FEATURE_SIZE, DEFAULT_FEATURE_SIZE), mode='bilinear')  # this is if h,w < (32,32)
+        elif 'vmamba' in self.config['which_model']:
+            # VMamba single-stage: use last stage features only
+            outs = self.encoder(imgs_concat)
+            img_fts = outs[-1]  # B, C, H, W
+            if img_fts.shape[-1] < DEFAULT_FEATURE_SIZE:
+                img_fts = F.interpolate(img_fts, size=(
+                    DEFAULT_FEATURE_SIZE, DEFAULT_FEATURE_SIZE), mode='bilinear')
         else:
             raise NotImplementedError(
                 f'Backbone network {self.config["which_model"]} not implemented')
@@ -114,6 +138,8 @@ class FewShotSeg(nn.Module):
                 embed_dim = 768
             elif 'dinov2_l14' in self.config['which_model']:
                 embed_dim = 1024
+            elif 'vmamba_tiny' in self.config['which_model']:
+                embed_dim = 768
             self.cls_unit = MultiProtoAsConv(proto_grid=[proto_hw, proto_hw], feature_hw=self.config["feature_hw"], embed_dim=embed_dim)  # when treating it as ordinary prototype
             print(f"cls unit feature hw: {self.cls_unit.feature_hw}")
         else:

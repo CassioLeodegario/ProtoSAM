@@ -4,3 +4,19 @@ exps/
 debug/
 test_*/
 pretrained_model/*
+# W&B logs (ficam locais, dados vão pro wandb.ai)
+wandb/
+
+# VMamba repo clonado (referência, não faz parte do ProtoSAM)
+VMamba/
+
+# Datasets e modelos (muito grandes pro git)
+data/PolypDataset/
+data/polyp/
+pretrained_model/
+polyp_raw/
+
+# Logs e arquivos temporários
+tea_debug.log
+test_polyp/
+test_polyp_vmamba/

@@ -107,9 +107,13 @@ class PolypSuperDataset(Dataset):
         sp = sp + 1  # shift so 0 is never a valid label (mirrors NIfTI convention)
         return sp.astype(np.int32)
 
-    def _pick_superpixel(self, sp_map):
-        """Pick a random superpixel label."""
-        return random.choice(np.unique(sp_map).tolist())
+    def _pick_superpixel(self, sp_map, min_pixels=200):
+        """Pick a random superpixel label with minimum pixel count."""
+        labels, counts = np.unique(sp_map, return_counts=True)
+        valid = labels[counts >= min_pixels]
+        if len(valid) == 0:
+            valid = labels  # fallback: use all
+        return random.choice(valid.tolist())
 
     # ------------------------------------------------------------------
     # Dataset interface
@@ -149,8 +153,17 @@ class PolypSuperDataset(Dataset):
                 img_aug = comp[:, :, :3]
                 lb_aug = comp[:, :, 3:4]
 
-            img_t = torch.from_numpy(np.transpose(img_aug, (2, 0, 1))).float()  # 3xHxW
-            lb_t = torch.from_numpy(lb_aug.squeeze(-1)).float()  # HxW
+            # Se a máscara ficou vazia após augmentação, tenta outro superpixel
+            if lb_aug.sum() == 0:
+                superpix_label = self._pick_superpixel(sp_map)
+                label_t = np.float32(sp_map == superpix_label)
+                label_4aug = label_t[..., np.newaxis]
+                comp = np.concatenate([img, label_4aug], axis=-1)
+                img_aug = comp[:, :, :3]
+                lb_aug = comp[:, :, 3:4]
+
+            img_t = torch.from_numpy(np.transpose(img_aug, (2, 0, 1))).float()
+            lb_t = torch.from_numpy(lb_aug.squeeze(-1)).float()
 
             pair_buffer.append({"image": img_t, "label": lb_t})
 

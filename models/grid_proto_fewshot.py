@@ -296,7 +296,15 @@ class FewShotSeg(nn.Module):
             assign_maps = []
             bg_sim_maps = []
             fg_sim_maps = []
-            bg_mode = BG_PROT_MODE
+
+            # Fallback: if no grid cell of the BG mask is fully covered,
+            # gridconv would yield 0 prototypes. Drop to global-prototype
+            # mode just like the FG branch does below.
+            k_size = self.cls_unit.kernel_size
+            if BG_PROT_MODE != 'mask' and F.avg_pool2d(res_bg_msk[0, 0], k_size).max() < BG_THRESH:
+                bg_mode = 'mask'
+            else:
+                bg_mode = BG_PROT_MODE
 
             _raw_score, _, aux_attr, _ = self.cls_unit(
                 qry_fts, supp_fts, res_bg_msk, mode=bg_mode, thresh=BG_THRESH, isval=isval, val_wsize=val_wsize, vis_sim=show_viz)
@@ -404,7 +412,14 @@ class FewShotSeg(nn.Module):
                     binary_masks[0].float(), size=size, mode=mode)  # 1, n, h ,w
                 scores = []
 
-                bg_mode = BG_PROT_MODE
+                # Same fallback as in forward(): the predicted BG mask early
+                # in training can be almost empty, leaving zero fully-covered
+                # grid cells and exploding the conv2d weight check.
+                k_size = self.cls_unit.kernel_size
+                if BG_PROT_MODE != 'mask' and F.avg_pool2d(qry_pred_bg_msk, k_size).max() < BG_THRESH:
+                    bg_mode = 'mask'
+                else:
+                    bg_mode = BG_PROT_MODE
                 _raw_score_bg, _, _, _ = self.cls_unit(
                     qry=img_fts, sup_x=qry_fts, sup_y=qry_pred_bg_msk.unsqueeze(-3), mode=bg_mode, thresh=BG_THRESH)
 

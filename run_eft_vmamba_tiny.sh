@@ -24,10 +24,12 @@ python training.py \
     use_coco_init=False \
     'model.use_coco_init'=False \
     n_steps=100100 \
-    lr=1e-3 \
+    optim_type='adam' \
+    lr=5e-5 \
     batch_size=1 \
+    grad_accumulation_steps=8 \
     num_workers=4 \
-    superpix_scale='MIDDLE' \
+    superpix_scale='SMALL' \
     proto_grid_size=8 \
     max_iters_per_load=1000 \
     save_snapshot_every=25000 \

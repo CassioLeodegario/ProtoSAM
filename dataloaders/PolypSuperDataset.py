@@ -2,7 +2,9 @@
 2D Superpixel Dataset for polyp images (PNG format).
 Replaces GenericSuperDatasetv2 for natural/endoscopic 2D images.
 Superpixels are generated on-the-fly using SLIC segmentation.
-Validates that selected superpixel survives stride-8 downsampling.
+Validates that the selected superpixel produces at least one fully covered
+cell on the prototype grid (matches MultiProtoAsConv's FG/BG_THRESH=0.95
+criterion), so the chosen sample never produces zero prototypes downstream.
 """
 
 import os
@@ -21,7 +23,13 @@ SUPERPIX_CONFIG = {
     "LARGE": {"n_segments": 50, "compactness": 10},
 }
 
-STRIDE = 8  # VMamba feature map stride
+# Same grid the MultiProtoAsConv uses (DEFAULT_FEATURE_SIZE / proto_grid_size).
+# A superpixel is "valid" only if at least one cell of this grid is fully
+# covered by it — that is the exact criterion the prototype layer applies
+# at threshold FG_THRESH=0.95, so any sample we accept here will produce
+# at least one foreground prototype downstream.
+PROTO_GRID = 8
+COVERAGE_THRESH = 0.95
 
 
 class PolypSuperDataset(Dataset):
@@ -45,7 +53,8 @@ class PolypSuperDataset(Dataset):
         self.superpix_cfg = SUPERPIX_CONFIG[superpix_scale]
         self.nclass = 2
         self.tile_z_dim = 1
-        self.feat_size = image_size // STRIDE
+        self.proto_grid = PROTO_GRID
+        self.coverage_thresh = COVERAGE_THRESH
 
         img_dir = os.path.join(base_dir, "image")
         self.img_paths = sorted(glob.glob(os.path.join(img_dir, "*.png")))
@@ -72,13 +81,24 @@ class PolypSuperDataset(Dataset):
         sp = slic(img_rgb, **self.superpix_cfg, start_label=1)
         return sp.astype(np.int32)
 
-    def _mask_survives_stride(self, mask):
-        small = cv2.resize(
+    def _grid_coverage(self, mask):
+        # avg-pool the binary mask down to the prototype grid (e.g. 8x8).
+        # cv2.INTER_AREA on a binary input acts as average pooling, so each
+        # output cell holds the foreground fraction of its receptive field.
+        return cv2.resize(
             mask.astype(np.float32),
-            (self.feat_size, self.feat_size),
+            (self.proto_grid, self.proto_grid),
             interpolation=cv2.INTER_AREA,
         )
-        return small.sum() > 0
+
+    def _mask_survives_stride(self, mask):
+        # Foreground: at least one grid cell must be fully covered (>= thresh).
+        # Background ((1 - mask)) is also required to have one fully covered
+        # cell, otherwise the BG branch of MultiProtoAsConv produces 0
+        # prototypes and the whole batch is dropped downstream.
+        cov_fg = self._grid_coverage(mask).max()
+        cov_bg = self._grid_coverage(1.0 - mask).max()
+        return cov_fg >= self.coverage_thresh and cov_bg >= self.coverage_thresh
 
     def _pick_valid_superpixel(self, sp_map, max_tries=20):
         labels = np.unique(sp_map).tolist()

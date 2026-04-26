@@ -191,6 +191,8 @@ def main(_run, _config, _log):
     )
 
     i_iter = 0  # total number of iteration
+    bad_batches = 0  # batches dropped because the model raised
+    seen_batches = 0  # batches consumed from the dataloader (good + bad)
     # number of times for reloading
     n_sub_epoches = max(
         1, _config["n_steps"] // _config["max_iters_per_load"], _config["epochs"]
@@ -205,7 +207,7 @@ def main(_run, _config, _log):
         optimizer.zero_grad()
         for idx, sample_batched in enumerate(tqdm(trainloader)):
             losses = []
-            i_iter += 1
+            seen_batches += 1
             support_images = [
                 [shot.to(device, precision) for shot in way]
                 for way in sample_batched["support_images"]
@@ -244,7 +246,12 @@ def main(_run, _config, _log):
                 query_pred, align_loss, _, _, _, _, _ = out
                 # pred = np.array(query_pred.argmax(dim=1)[0].cpu())
             except Exception as e:
-                print(f"faulty batch detected, skip: {e}")
+                bad_batches += 1
+                if bad_batches % 50 == 0:
+                    print(
+                        f"[bad batch] {bad_batches}/{seen_batches} "
+                        f"({100.0 * bad_batches / max(seen_batches, 1):.1f}%) — last error: {e}"
+                    )
                 # offload cuda memory
                 del (
                     support_images,
@@ -255,11 +262,15 @@ def main(_run, _config, _log):
                 )
                 continue
 
+            # Only count successful batches as iterations so the scheduler,
+            # print_interval and snapshot_every reflect real optimisation steps.
+            i_iter += 1
+
             query_loss = criterion(query_pred.float(), query_labels.long())
             loss += query_loss + align_loss
-            pbar.set_postfix({"loss": loss.item()})
+            pbar.set_postfix({"loss": loss.item(), "bad": bad_batches})
             loss.backward()
-            if (idx + 1) % _config["grad_accumulation_steps"] == 0:
+            if (i_iter % _config["grad_accumulation_steps"]) == 0:
                 optimizer.step()
                 optimizer.zero_grad()
                 scheduler.step()

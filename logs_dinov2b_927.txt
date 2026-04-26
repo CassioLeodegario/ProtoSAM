@@ -1,0 +1,180 @@
+===================================
+dinov2_b14_polyp_cca_grid_8_res_672_polyps_fold_0 on GPU 0
+test_vfold0
+/workspace/ProtoSAM/models/vmamba.py:840: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  def forward(ctx, u, delta, A, B, C, D=None, delta_bias=None, delta_softplus=False, oflex=True, backend=None):
+/workspace/ProtoSAM/models/vmamba.py:855: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  def backward(ctx, dout, *args):
+/workspace/miniforge3/envs/protosam/lib/python3.10/site-packages/munch/__init__.py:24: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+WARNING - root - Changed type of config entry "save_snapshot_every" from int to str
+WARNING - root - Changed type of config entry "min_fg_data" from str to int
+INFO - mySSL - Running command 'main'
+INFO - mySSL - Started run with ID "1"
+####### created dir:test_polyp/dinov2_b14_polyp_cca_grid_8_res_672_polyps_fold_0/mySSL_test_vfold0_polyps_sets_0_1shot/1 #######
+config do_cca: True, use_bbox: True
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from /root/.netrc.
+wandb: Currently logged in as: cassio-leodegario (leodegario) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: WARNING Using a boolean value for 'reinit' is deprecated. Use 'return_previous' or 'finish_previous' instead.
+wandb: setting up run sxhzerk5
+wandb: Tracking run with wandb version 0.26.0
+wandb: Run data is saved locally in /workspace/ProtoSAM/wandb/run-20260426_193408-sxhzerk5
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run fragrant-serenity-5
+wandb: ⭐️ View project at https://wandb.ai/leodegario/protosam-polyp
+wandb: 🚀 View run at https://wandb.ai/leodegario/protosam-polyp/runs/sxhzerk5
+INFO - main - ###### Reload model None ######
+Using cache found in ./pretrained_model/hub/facebookresearch_dinov2_main
+/workspace/ProtoSAM/./pretrained_model/hub/facebookresearch_dinov2_main/dinov2/layers/swiglu_ffn.py:51: UserWarning: xFormers is not available (SwiGLU)
+  warnings.warn("xFormers is not available (SwiGLU)")
+/workspace/ProtoSAM/./pretrained_model/hub/facebookresearch_dinov2_main/dinov2/layers/attention.py:33: UserWarning: xFormers is not available (Attention)
+  warnings.warn("xFormers is not available (Attention)")
+/workspace/ProtoSAM/./pretrained_model/hub/facebookresearch_dinov2_main/dinov2/layers/block.py:40: UserWarning: xFormers is not available (Block)
+  warnings.warn("xFormers is not available (Block)")
+INFO - dinov2 - using MLP layer as FFN
+Downloading: "https://dl.fbaipublicfiles.com/dinov2/dinov2_vitb14/dinov2_vitb14_pretrain.pth" to ./pretrained_model/hub/checkpoints/dinov2_vitb14_pretrain.pth
+  0%|          | 0.00/330M [00:00<?, ?B/s]  3%|▎         | 11.4M/330M [00:00<00:02, 119MB/s]  7%|▋         | 23.4M/330M [00:00<00:02, 122MB/s] 11%|█         | 35.1M/330M [00:00<00:03, 101MB/s] 14%|█▎        | 45.1M/330M [00:00<00:03, 95.9MB/s] 16%|█▋        | 54.5M/330M [00:00<00:03, 92.6MB/s] 20%|██        | 67.2M/330M [00:00<00:02, 105MB/s]  23%|██▎       | 77.5M/330M [00:00<00:02, 104MB/s] 27%|██▋       | 88.2M/330M [00:00<00:02, 106MB/s] 30%|██▉       | 98.6M/330M [00:01<00:02, 95.6MB/s] 33%|███▎      | 110M/330M [00:01<00:02, 101MB/s]   36%|███▋      | 120M/330M [00:01<00:02, 94.5MB/s] 39%|███▉      | 129M/330M [00:01<00:02, 87.9MB/s] 43%|████▎     | 140M/330M [00:01<00:02, 96.5MB/s] 47%|████▋     | 155M/330M [00:01<00:01, 111MB/s]  52%|█████▏    | 170M/330M [00:01<00:01, 125MB/s] 56%|█████▌    | 185M/330M [00:01<00:01, 133MB/s] 60%|█████▉    | 198M/330M [00:01<00:01, 133MB/s] 64%|██████▍   | 211M/330M [00:02<00:01, 116MB/s] 67%|██████▋   | 223M/330M [00:02<00:01, 109MB/s] 71%|███████▏  | 235M/330M [00:02<00:00, 116MB/s] 75%|███████▍  | 247M/330M [00:02<00:00, 116MB/s] 78%|███████▊  | 258M/330M [00:02<00:00, 115MB/s] 82%|████████▏ | 269M/330M [00:02<00:00, 113MB/s] 85%|████████▍ | 280M/330M [00:02<00:00, 104MB/s] 88%|████████▊ | 290M/330M [00:02<00:00, 101MB/s] 91%|█████████ | 300M/330M [00:02<00:00, 98.0MB/s] 94%|█████████▍| 312M/330M [00:03<00:00, 104MB/s]  97%|█████████▋| 322M/330M [00:03<00:00, 102MB/s]100%|██████████| 330M/330M [00:03<00:00, 107MB/s]
+MultiProtoAsConv: kernel_size: [6, 6]
+cls unit feature hw: [48, 48]
+INFO - main - ###### Starting validation ######
+support indices:[927]
+  0%|          | 0/100 [00:00<?, ?it/s]
+  0%|          | 0/100 [00:00<?, ?it/s][A  0%|          | 0/100 [00:01<?, ?it/s, {'mdice': '0.7566', 'miou': '0.6085, n_try: 1'}]
+  1%|          | 1/100 [00:01<02:59,  1.81s/it][A  0%|          | 0/100 [00:02<?, ?it/s, {'mdice': '0.6936', 'miou': '0.5345, n_try: 1'}]
+  2%|▏         | 2/100 [00:02<01:39,  1.02s/it][A  0%|          | 0/100 [00:02<?, ?it/s, {'mdice': '0.7569', 'miou': '0.6202, n_try: 1'}]
+  3%|▎         | 3/100 [00:02<01:14,  1.31it/s][A  0%|          | 0/100 [00:03<?, ?it/s, {'mdice': '0.7648', 'miou': '0.6277, n_try: 1'}]
+  4%|▍         | 4/100 [00:03<01:03,  1.52it/s][A  0%|          | 0/100 [00:03<?, ?it/s, {'mdice': '0.7680', 'miou': '0.6303, n_try: 1'}]
+  5%|▌         | 5/100 [00:03<00:55,  1.70it/s][A  0%|          | 0/100 [00:04<?, ?it/s, {'mdice': '0.7816', 'miou': '0.6483, n_try: 1'}]
+  6%|▌         | 6/100 [00:04<00:51,  1.82it/s][A  0%|          | 0/100 [00:04<?, ?it/s, {'mdice': '0.7984', 'miou': '0.6724, n_try: 1'}]
+  7%|▋         | 7/100 [00:04<00:48,  1.92it/s][A  0%|          | 0/100 [00:05<?, ?it/s, {'mdice': '0.7544', 'miou': '0.6243, n_try: 1'}]
+  8%|▊         | 8/100 [00:05<00:46,  1.98it/s][A  0%|          | 0/100 [00:05<?, ?it/s, {'mdice': '0.7091', 'miou': '0.5782, n_try: 1'}]
+  9%|▉         | 9/100 [00:05<00:44,  2.04it/s][A  0%|          | 0/100 [00:06<?, ?it/s, {'mdice': '0.7317', 'miou': '0.6083, n_try: 1'}]
+ 10%|█         | 10/100 [00:06<00:43,  2.08it/s][A  0%|          | 0/100 [00:06<?, ?it/s, {'mdice': '0.7442', 'miou': '0.6227, n_try: 1'}]
+ 11%|█         | 11/100 [00:06<00:42,  2.11it/s][A  0%|          | 0/100 [00:06<?, ?it/s, {'mdice': '0.7017', 'miou': '0.5819, n_try: 1'}]
+ 12%|█▏        | 12/100 [00:06<00:40,  2.16it/s][A  0%|          | 0/100 [00:07<?, ?it/s, {'mdice': '0.7011', 'miou': '0.5780, n_try: 1'}]
+ 13%|█▎        | 13/100 [00:07<00:40,  2.16it/s][A  0%|          | 0/100 [00:07<?, ?it/s, {'mdice': '0.7155', 'miou': '0.5956, n_try: 1'}]
+ 14%|█▍        | 14/100 [00:07<00:40,  2.15it/s][A  0%|          | 0/100 [00:08<?, ?it/s, {'mdice': '0.7063', 'miou': '0.5829, n_try: 1'}]
+ 15%|█▌        | 15/100 [00:08<00:39,  2.17it/s][A  0%|          | 0/100 [00:08<?, ?it/s, {'mdice': '0.6700', 'miou': '0.5507, n_try: 1'}]
+ 16%|█▌        | 16/100 [00:08<00:38,  2.20it/s][A  0%|          | 0/100 [00:09<?, ?it/s, {'mdice': '0.6409', 'miou': '0.5239, n_try: 1'}]
+ 17%|█▋        | 17/100 [00:09<00:37,  2.19it/s][A  0%|          | 0/100 [00:09<?, ?it/s, {'mdice': '0.6496', 'miou': '0.5317, n_try: 1'}]
+ 18%|█▊        | 18/100 [00:09<00:36,  2.24it/s][A  0%|          | 0/100 [00:10<?, ?it/s, {'mdice': '0.6652', 'miou': '0.5510, n_try: 1'}]
+ 19%|█▉        | 19/100 [00:10<00:35,  2.27it/s][A  0%|          | 0/100 [00:10<?, ?it/s, {'mdice': '0.6693', 'miou': '0.5532, n_try: 1'}]
+ 20%|██        | 20/100 [00:10<00:35,  2.25it/s][A  0%|          | 0/100 [00:11<?, ?it/s, {'mdice': '0.6496', 'miou': '0.5339, n_try: 1'}]
+ 21%|██        | 21/100 [00:10<00:36,  2.19it/s][A  0%|          | 0/100 [00:11<?, ?it/s, {'mdice': '0.6595', 'miou': '0.5444, n_try: 1'}]
+ 22%|██▏       | 22/100 [00:11<00:34,  2.24it/s][A  0%|          | 0/100 [00:11<?, ?it/s, {'mdice': '0.6699', 'miou': '0.5562, n_try: 1'}]
+ 23%|██▎       | 23/100 [00:11<00:34,  2.26it/s][A  0%|          | 0/100 [00:12<?, ?it/s, {'mdice': '0.6631', 'miou': '0.5472, n_try: 1'}]
+ 24%|██▍       | 24/100 [00:12<00:33,  2.26it/s][A  0%|          | 0/100 [00:12<?, ?it/s, {'mdice': '0.6729', 'miou': '0.5585, n_try: 1'}]
+ 25%|██▌       | 25/100 [00:12<00:33,  2.25it/s][A  0%|          | 0/100 [00:13<?, ?it/s, {'mdice': '0.6623', 'miou': '0.5466, n_try: 1'}]
+ 26%|██▌       | 26/100 [00:13<00:33,  2.22it/s][A  0%|          | 0/100 [00:13<?, ?it/s, {'mdice': '0.6703', 'miou': '0.5553, n_try: 1'}]
+ 27%|██▋       | 27/100 [00:13<00:34,  2.10it/s][A  0%|          | 0/100 [00:14<?, ?it/s, {'mdice': '0.6482', 'miou': '0.5364, n_try: 1'}]
+ 28%|██▊       | 28/100 [00:14<00:35,  2.01it/s][A  0%|          | 0/100 [00:14<?, ?it/s, {'mdice': '0.6381', 'miou': '0.5254, n_try: 1'}]
+ 29%|██▉       | 29/100 [00:14<00:34,  2.07it/s][A  0%|          | 0/100 [00:15<?, ?it/s, {'mdice': '0.6419', 'miou': '0.5280, n_try: 1'}]
+ 30%|███       | 30/100 [00:15<00:32,  2.12it/s][A  0%|          | 0/100 [00:15<?, ?it/s, {'mdice': '0.6304', 'miou': '0.5163, n_try: 1'}]
+ 31%|███       | 31/100 [00:15<00:31,  2.17it/s][A  0%|          | 0/100 [00:16<?, ?it/s, {'mdice': '0.6386', 'miou': '0.5253, n_try: 1'}]
+ 32%|███▏      | 32/100 [00:16<00:30,  2.21it/s][A  0%|          | 0/100 [00:16<?, ?it/s, {'mdice': '0.6422', 'miou': '0.5278, n_try: 1'}]
+ 33%|███▎      | 33/100 [00:16<00:30,  2.22it/s][A  0%|          | 0/100 [00:16<?, ?it/s, {'mdice': '0.6496', 'miou': '0.5360, n_try: 1'}]
+ 34%|███▍      | 34/100 [00:16<00:29,  2.26it/s][A  0%|          | 0/100 [00:17<?, ?it/s, {'mdice': '0.6572', 'miou': '0.5448, n_try: 1'}]
+ 35%|███▌      | 35/100 [00:17<00:28,  2.25it/s][A  0%|          | 0/100 [00:17<?, ?it/s, {'mdice': '0.6614', 'miou': '0.5486, n_try: 1'}]
+ 36%|███▌      | 36/100 [00:17<00:28,  2.26it/s][A  0%|          | 0/100 [00:18<?, ?it/s, {'mdice': '0.6688', 'miou': '0.5575, n_try: 1'}]
+ 37%|███▋      | 37/100 [00:18<00:27,  2.26it/s][A  0%|          | 0/100 [00:18<?, ?it/s, {'mdice': '0.6686', 'miou': '0.5558, n_try: 1'}]
+ 38%|███▊      | 38/100 [00:18<00:27,  2.25it/s][A  0%|          | 0/100 [00:19<?, ?it/s, {'mdice': '0.6674', 'miou': '0.5532, n_try: 1'}]
+ 39%|███▉      | 39/100 [00:19<00:27,  2.21it/s][A  0%|          | 0/100 [00:19<?, ?it/s, {'mdice': '0.6549', 'miou': '0.5416, n_try: 1'}]
+ 40%|████      | 40/100 [00:19<00:27,  2.17it/s][A  0%|          | 0/100 [00:20<?, ?it/s, {'mdice': '0.6575', 'miou': '0.5435, n_try: 1'}]
+ 41%|████      | 41/100 [00:20<00:26,  2.21it/s][A  0%|          | 0/100 [00:20<?, ?it/s, {'mdice': '0.6574', 'miou': '0.5421, n_try: 1'}]
+ 42%|████▏     | 42/100 [00:20<00:26,  2.20it/s][A  0%|          | 0/100 [00:21<?, ?it/s, {'mdice': '0.6557', 'miou': '0.5390, n_try: 1'}]
+ 43%|████▎     | 43/100 [00:21<00:26,  2.18it/s][A  0%|          | 0/100 [00:21<?, ?it/s, {'mdice': '0.6587', 'miou': '0.5416, n_try: 1'}]
+ 44%|████▍     | 44/100 [00:21<00:26,  2.12it/s][A  0%|          | 0/100 [00:22<?, ?it/s, {'mdice': '0.6615', 'miou': '0.5439, n_try: 1'}]
+ 45%|████▌     | 45/100 [00:21<00:25,  2.16it/s][A  0%|          | 0/100 [00:22<?, ?it/s, {'mdice': '0.6493', 'miou': '0.5332, n_try: 1'}]
+ 46%|████▌     | 46/100 [00:22<00:24,  2.17it/s][A  0%|          | 0/100 [00:22<?, ?it/s, {'mdice': '0.6526', 'miou': '0.5363, n_try: 1'}]
+ 47%|████▋     | 47/100 [00:22<00:23,  2.21it/s][A  0%|          | 0/100 [00:23<?, ?it/s, {'mdice': '0.6558', 'miou': '0.5392, n_try: 1'}]
+ 48%|████▊     | 48/100 [00:23<00:23,  2.24it/s][A  0%|          | 0/100 [00:23<?, ?it/s, {'mdice': '0.6559', 'miou': '0.5382, n_try: 1'}]
+ 49%|████▉     | 49/100 [00:23<00:23,  2.20it/s][A  0%|          | 0/100 [00:24<?, ?it/s, {'mdice': '0.6457', 'miou': '0.5290, n_try: 1'}]
+ 50%|█████     | 50/100 [00:24<00:22,  2.23it/s][A  0%|          | 0/100 [00:24<?, ?it/s, {'mdice': '0.6353', 'miou': '0.5199, n_try: 1'}]
+ 51%|█████     | 51/100 [00:24<00:21,  2.27it/s][A  0%|          | 0/100 [00:25<?, ?it/s, {'mdice': '0.6317', 'miou': '0.5154, n_try: 1'}]
+ 52%|█████▏    | 52/100 [00:25<00:21,  2.21it/s][A  0%|          | 0/100 [00:25<?, ?it/s, {'mdice': '0.6278', 'miou': '0.5107, n_try: 1'}]
+ 53%|█████▎    | 53/100 [00:25<00:21,  2.20it/s][A  0%|          | 0/100 [00:26<?, ?it/s, {'mdice': '0.6321', 'miou': '0.5153, n_try: 1'}]
+ 54%|█████▍    | 54/100 [00:25<00:20,  2.23it/s][A  0%|          | 0/100 [00:26<?, ?it/s, {'mdice': '0.6258', 'miou': '0.5090, n_try: 1'}]
+ 55%|█████▌    | 55/100 [00:26<00:19,  2.26it/s][A  0%|          | 0/100 [00:26<?, ?it/s, {'mdice': '0.6285', 'miou': '0.5112, n_try: 1'}]
+ 56%|█████▌    | 56/100 [00:26<00:19,  2.24it/s][A  0%|          | 0/100 [00:27<?, ?it/s, {'mdice': '0.6253', 'miou': '0.5073, n_try: 1'}]
+ 57%|█████▋    | 57/100 [00:27<00:19,  2.25it/s][A  0%|          | 0/100 [00:27<?, ?it/s, {'mdice': '0.6221', 'miou': '0.5034, n_try: 1'}]
+ 58%|█████▊    | 58/100 [00:27<00:18,  2.27it/s][A  0%|          | 0/100 [00:28<?, ?it/s, {'mdice': '0.6196', 'miou': '0.5002, n_try: 1'}]
+ 59%|█████▉    | 59/100 [00:28<00:18,  2.28it/s][A  0%|          | 0/100 [00:28<?, ?it/s, {'mdice': '0.6248', 'miou': '0.5064, n_try: 1'}]
+ 60%|██████    | 60/100 [00:28<00:17,  2.29it/s][A  0%|          | 0/100 [00:29<?, ?it/s, {'mdice': '0.6257', 'miou': '0.5065, n_try: 1'}]
+ 61%|██████    | 61/100 [00:29<00:16,  2.33it/s][A  0%|          | 0/100 [00:29<?, ?it/s, {'mdice': '0.6257', 'miou': '0.5056, n_try: 1'}]
+ 62%|██████▏   | 62/100 [00:29<00:16,  2.28it/s][A  0%|          | 0/100 [00:29<?, ?it/s, {'mdice': '0.6263', 'miou': '0.5055, n_try: 1'}]
+ 63%|██████▎   | 63/100 [00:29<00:16,  2.25it/s][A  0%|          | 0/100 [00:30<?, ?it/s, {'mdice': '0.6302', 'miou': '0.5098, n_try: 1'}]
+ 64%|██████▍   | 64/100 [00:30<00:16,  2.24it/s][A  0%|          | 0/100 [00:30<?, ?it/s, {'mdice': '0.6261', 'miou': '0.5054, n_try: 1'}]
+ 65%|██████▌   | 65/100 [00:30<00:15,  2.20it/s][A  0%|          | 0/100 [00:31<?, ?it/s, {'mdice': '0.6227', 'miou': '0.5015, n_try: 1'}]
+ 66%|██████▌   | 66/100 [00:31<00:15,  2.22it/s][A  0%|          | 0/100 [00:31<?, ?it/s, {'mdice': '0.6269', 'miou': '0.5064, n_try: 1'}]
+ 67%|██████▋   | 67/100 [00:31<00:15,  2.19it/s][A  0%|          | 0/100 [00:32<?, ?it/s, {'mdice': '0.6277', 'miou': '0.5065, n_try: 1'}]
+ 68%|██████▊   | 68/100 [00:32<00:14,  2.20it/s][A  0%|          | 0/100 [00:32<?, ?it/s, {'mdice': '0.6220', 'miou': '0.5011, n_try: 1'}]
+ 69%|██████▉   | 69/100 [00:32<00:14,  2.17it/s][A  0%|          | 0/100 [00:33<?, ?it/s, {'mdice': '0.6210', 'miou': '0.4994, n_try: 1'}]
+ 70%|███████   | 70/100 [00:33<00:13,  2.18it/s][A  0%|          | 0/100 [00:33<?, ?it/s, {'mdice': '0.6195', 'miou': '0.4972, n_try: 1'}]
+ 71%|███████   | 71/100 [00:33<00:13,  2.16it/s][A  0%|          | 0/100 [00:34<?, ?it/s, {'mdice': '0.6109', 'miou': '0.4903, n_try: 1'}]
+ 72%|███████▏  | 72/100 [00:34<00:12,  2.18it/s][A  0%|          | 0/100 [00:34<?, ?it/s, {'mdice': '0.6123', 'miou': '0.4911, n_try: 1'}]
+ 73%|███████▎  | 73/100 [00:34<00:12,  2.20it/s][A  0%|          | 0/100 [00:35<?, ?it/s, {'mdice': '0.6070', 'miou': '0.4862, n_try: 1'}]
+ 74%|███████▍  | 74/100 [00:34<00:11,  2.19it/s][A  0%|          | 0/100 [00:35<?, ?it/s, {'mdice': '0.6116', 'miou': '0.4919, n_try: 1'}]
+ 75%|███████▌  | 75/100 [00:35<00:11,  2.20it/s][A  0%|          | 0/100 [00:35<?, ?it/s, {'mdice': '0.6152', 'miou': '0.4959, n_try: 1'}]
+ 76%|███████▌  | 76/100 [00:35<00:10,  2.19it/s][A  0%|          | 0/100 [00:36<?, ?it/s, {'mdice': '0.6186', 'miou': '0.4996, n_try: 1'}]
+ 77%|███████▋  | 77/100 [00:36<00:10,  2.16it/s][A  0%|          | 0/100 [00:36<?, ?it/s, {'mdice': '0.6216', 'miou': '0.5027, n_try: 1'}]
+ 78%|███████▊  | 78/100 [00:36<00:10,  2.18it/s][A  0%|          | 0/100 [00:37<?, ?it/s, {'mdice': '0.6256', 'miou': '0.5074, n_try: 1'}]
+ 79%|███████▉  | 79/100 [00:37<00:09,  2.20it/s][A  0%|          | 0/100 [00:37<?, ?it/s, {'mdice': '0.6280', 'miou': '0.5098, n_try: 1'}]
+ 80%|████████  | 80/100 [00:37<00:09,  2.16it/s][A  0%|          | 0/100 [00:38<?, ?it/s, {'mdice': '0.6315', 'miou': '0.5138, n_try: 1'}]
+ 81%|████████  | 81/100 [00:38<00:08,  2.17it/s][A  0%|          | 0/100 [00:38<?, ?it/s, {'mdice': '0.6346', 'miou': '0.5172, n_try: 1'}]
+ 82%|████████▏ | 82/100 [00:38<00:08,  2.18it/s][A  0%|          | 0/100 [00:39<?, ?it/s, {'mdice': '0.6288', 'miou': '0.5120, n_try: 1'}]
+ 83%|████████▎ | 83/100 [00:39<00:07,  2.20it/s][A  0%|          | 0/100 [00:39<?, ?it/s, {'mdice': '0.6273', 'miou': '0.5099, n_try: 1'}]
+ 84%|████████▍ | 84/100 [00:39<00:07,  2.21it/s][A  0%|          | 0/100 [00:40<?, ?it/s, {'mdice': '0.6292', 'miou': '0.5116, n_try: 1'}]
+ 85%|████████▌ | 85/100 [00:39<00:06,  2.22it/s][A  0%|          | 0/100 [00:40<?, ?it/s, {'mdice': '0.6324', 'miou': '0.5152, n_try: 1'}]
+ 86%|████████▌ | 86/100 [00:40<00:06,  2.20it/s][A  0%|          | 0/100 [00:40<?, ?it/s, {'mdice': '0.6335', 'miou': '0.5158, n_try: 1'}]
+ 87%|████████▋ | 87/100 [00:40<00:05,  2.21it/s][A  0%|          | 0/100 [00:41<?, ?it/s, {'mdice': '0.6369', 'miou': '0.5199, n_try: 1'}]
+ 88%|████████▊ | 88/100 [00:41<00:05,  2.25it/s][A  0%|          | 0/100 [00:41<?, ?it/s, {'mdice': '0.6379', 'miou': '0.5204, n_try: 1'}]
+ 89%|████████▉ | 89/100 [00:41<00:04,  2.21it/s][A  0%|          | 0/100 [00:42<?, ?it/s, {'mdice': '0.6404', 'miou': '0.5232, n_try: 1'}]
+ 90%|█████████ | 90/100 [00:42<00:04,  2.20it/s][A  0%|          | 0/100 [00:42<?, ?it/s, {'mdice': '0.6434', 'miou': '0.5265, n_try: 1'}]
+ 91%|█████████ | 91/100 [00:42<00:04,  2.15it/s][A  0%|          | 0/100 [00:43<?, ?it/s, {'mdice': '0.6432', 'miou': '0.5258, n_try: 1'}]
+ 92%|█████████▏| 92/100 [00:43<00:03,  2.18it/s][A  0%|          | 0/100 [00:43<?, ?it/s, {'mdice': '0.6395', 'miou': '0.5220, n_try: 1'}]
+ 93%|█████████▎| 93/100 [00:43<00:03,  2.20it/s][A  0%|          | 0/100 [00:44<?, ?it/s, {'mdice': '0.6419', 'miou': '0.5246, n_try: 1'}]
+ 94%|█████████▍| 94/100 [00:44<00:02,  2.22it/s][A  0%|          | 0/100 [00:44<?, ?it/s, {'mdice': '0.6453', 'miou': '0.5288, n_try: 1'}]
+ 95%|█████████▌| 95/100 [00:44<00:02,  2.22it/s][A  0%|          | 0/100 [00:45<?, ?it/s, {'mdice': '0.6478', 'miou': '0.5315, n_try: 1'}]
+ 96%|█████████▌| 96/100 [00:44<00:01,  2.21it/s][A  0%|          | 0/100 [00:45<?, ?it/s, {'mdice': '0.6481', 'miou': '0.5313, n_try: 1'}]
+ 97%|█████████▋| 97/100 [00:45<00:01,  2.22it/s][A  0%|          | 0/100 [00:45<?, ?it/s, {'mdice': '0.6498', 'miou': '0.5330, n_try: 1'}]
+ 98%|█████████▊| 98/100 [00:45<00:00,  2.23it/s][A  0%|          | 0/100 [00:46<?, ?it/s, {'mdice': '0.6513', 'miou': '0.5343, n_try: 1'}]
+ 99%|█████████▉| 99/100 [00:46<00:00,  2.24it/s][A  0%|          | 0/100 [00:46<?, ?it/s, {'mdice': '0.6507', 'miou': '0.5332, n_try: 1'}]
+100%|██████████| 100/100 [00:46<00:00,  2.24it/s][A100%|██████████| 100/100 [00:46<00:00,  2.14it/s]
+  0%|          | 0/100 [00:46<?, ?it/s, {'mdice': '0.6507', 'miou': '0.5332, n_try: 1'}]
+INFO - main - mar_val batches meanDice_: 0.650715172290802
+INFO - main - mar_val batches meanIOU_: 0.5331757068634033
+INFO - main - mar_val batches meanDice: 0.650715172290802
+INFO - main - mar_val batches meanPrec: 0.6235319972038269
+INFO - main - mar_val batches meanRec: 0.847571849822998
+INFO - main - mar_val batches meanIOU: 0.5331757068634033
+wandb: updating run metadata
+wandb: uploading output.log; uploading wandb-summary.json; uploading config.yaml
+wandb: 
+wandb: Run history:
+wandb:     gpu_peak_memory_mb ▁
+wandb:              mean_dice ▁
+wandb:               mean_iou ▁
+wandb:         mean_precision ▁
+wandb:            mean_recall ▁
+wandb:        num_test_images ▁
+wandb: throughput_img_per_sec ▁
+wandb:     total_time_seconds ▁
+wandb: 
+wandb: Run summary:
+wandb:     gpu_peak_memory_mb 16313.61182
+wandb:              mean_dice 0.65072
+wandb:               mean_iou 0.53318
+wandb:         mean_precision 0.62353
+wandb:            mean_recall 0.84757
+wandb:        num_test_images 100
+wandb: throughput_img_per_sec 1.15526
+wandb:     total_time_seconds 86.56049
+wandb: 
+wandb: 🚀 View run fragrant-serenity-5 at: https://wandb.ai/leodegario/protosam-polyp/runs/sxhzerk5
+wandb: ⭐️ View project at: https://wandb.ai/leodegario/protosam-polyp
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20260426_193408-sxhzerk5/logs
+============ ============
+INFO - main - End of validation
+INFO - mySSL - Result: 1
+INFO - mySSL - Completed after 0:01:31

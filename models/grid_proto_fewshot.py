@@ -87,6 +87,38 @@ class FewShotSeg(nn.Module):
             )
             self.config['feature_hw'] = [max(
                 self.image_size//32, DEFAULT_FEATURE_SIZE), max(self.image_size//32, DEFAULT_FEATURE_SIZE)]
+        elif self.config['which_model'] == 'vmamba_small':
+            self.encoder = Backbone_VSSM(
+                out_indices=(3,),
+                pretrained='pretrained_model/vmamba_small_v2.pth',
+                depths=[2, 2, 15, 2], dims=96, drop_path_rate=0.3,
+                patch_size=4, in_chans=3, num_classes=1000,
+                ssm_d_state=1, ssm_ratio=2.0, ssm_dt_rank="auto", ssm_act_layer="silu",
+                ssm_conv=3, ssm_conv_bias=False, ssm_drop_rate=0.0,
+                ssm_init="v0", forward_type="v05_noz",
+                mlp_ratio=4.0, mlp_act_layer="gelu", mlp_drop_rate=0.0, gmlp=False,
+                patch_norm=True, norm_layer="ln2d",
+                downsample_version="v3", patchembed_version="v2",
+                use_checkpoint=False, posembed=False, imgsize=224,
+            )
+            self.config['feature_hw'] = [max(
+                self.image_size//32, DEFAULT_FEATURE_SIZE), max(self.image_size//32, DEFAULT_FEATURE_SIZE)]
+        elif self.config['which_model'] == 'vmamba_base':
+            self.encoder = Backbone_VSSM(
+                out_indices=(3,),
+                pretrained='pretrained_model/vmamba_base_v2.pth',
+                depths=[2, 2, 15, 2], dims=128, drop_path_rate=0.6,
+                patch_size=4, in_chans=3, num_classes=1000,
+                ssm_d_state=1, ssm_ratio=2.0, ssm_dt_rank="auto", ssm_act_layer="silu",
+                ssm_conv=3, ssm_conv_bias=False, ssm_drop_rate=0.0,
+                ssm_init="v0", forward_type="v05_noz",
+                mlp_ratio=4.0, mlp_act_layer="gelu", mlp_drop_rate=0.0, gmlp=False,
+                patch_norm=True, norm_layer="ln2d",
+                downsample_version="v3", patchembed_version="v2",
+                use_checkpoint=False, posembed=False, imgsize=224,
+            )
+            self.config['feature_hw'] = [max(
+                self.image_size//32, DEFAULT_FEATURE_SIZE), max(self.image_size//32, DEFAULT_FEATURE_SIZE)]
         else:
             raise NotImplementedError(
                 f'Backbone network {self.config["which_model"]} not implemented')
@@ -140,6 +172,10 @@ class FewShotSeg(nn.Module):
                 embed_dim = 1024
             elif 'vmamba_tiny' in self.config['which_model']:
                 embed_dim = 768
+            elif 'vmamba_small' in self.config['which_model']:
+                embed_dim = 768
+            elif 'vmamba_base' in self.config['which_model']:
+                embed_dim = 1024
             self.cls_unit = MultiProtoAsConv(proto_grid=[proto_hw, proto_hw], feature_hw=self.config["feature_hw"], embed_dim=embed_dim)  # when treating it as ordinary prototype
             print(f"cls unit feature hw: {self.cls_unit.feature_hw}")
         else:

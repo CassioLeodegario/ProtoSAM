@@ -38,4 +38,6 @@ python training.py \
     exp_prefix="$RUN_NAME" \
     base_model='alpnet' \
     exclude_cls_list=[] \
+    clsname='grid_proto' \
+    'model.cls_name'='grid_proto' \
     2>&1 | tee "logs_${RUN_NAME}.txt"

@@ -23,8 +23,6 @@ python training.py \
     'model.which_model'="$BACKBONE" \
     use_coco_init=False \
     'model.use_coco_init'=False \
-    reload_model_path="$PRETRAINED" \
-    'model.reload_model_path'="$PRETRAINED" \
     n_steps=100100 \
     lr=1e-3 \
     batch_size=1 \

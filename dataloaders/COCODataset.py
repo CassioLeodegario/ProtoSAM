@@ -12,6 +12,8 @@ import numpy as np
 import torch
 import torch.utils.data as data
 import torch.nn.functional as F
+import torchvision.transforms as T
+import torchvision.transforms.functional as TF
 import cv2
 
 try:

@@ -23,7 +23,7 @@ python training.py \
     'model.which_model'="$BACKBONE" \
     use_coco_init=False \
     'model.use_coco_init'=False \
-    n_steps=100100 \
+    n_steps=5500 \
     optim_type='adam' \
     lr=5e-5 \
     batch_size=1 \
@@ -32,7 +32,7 @@ python training.py \
     superpix_scale='SMALL' \
     proto_grid_size=8 \
     max_iters_per_load=1000 \
-    save_snapshot_every=25000 \
+    save_snapshot_every=1000 \
     print_interval=100 \
     which_aug='sabs_aug' \
     exp_prefix="$RUN_NAME" \

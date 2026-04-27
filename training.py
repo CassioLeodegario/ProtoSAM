@@ -205,7 +205,7 @@ def main(_run, _config, _log):
         _log.info(f"###### This is epoch {sub_epoch} of {n_sub_epoches} epoches ######")
         pbar = tqdm(trainloader)
         optimizer.zero_grad()
-        for idx, sample_batched in enumerate(tqdm(trainloader)):
+        for idx, sample_batched in enumerate(pbar):
             losses = []
             seen_batches += 1
             support_images = [

@@ -5,13 +5,8 @@
 # Snapshots are saved at:
 #   runs/mySSL_eft_vmamba_tiny_polyp_Polyp_Superpix_sets_0_1shot/<run_id>/snapshots/<step>.pth
 # With save_snapshot_every=1000 and n_steps=5500 you should have:
-<<<<<<< HEAD
 #   1000.pth, 2000.pth, 3000.pth, 4000.pth, 5000.pth
 # Use the latest (5000.pth) unless you want to compare earlier ones.
-=======
-#   1001.pth, 2001.pth, 3001.pth, 4001.pth, 5001.pth
-# Use the latest (5001.pth) unless you want to compare earlier ones.
->>>>>>> 900fff8f2897625990707a42f4d4b94a09c77c4e
 #
 # Quick way to find the run_id of the most recent EFT run:
 #   ls -1tr runs/mySSL_eft_vmamba_tiny_polyp_Polyp_Superpix_sets_0_1shot/ | tail -n1
@@ -35,13 +30,8 @@ NWORKER=4
 LORA=0
 
 # === EDIT THIS to your EFT snapshot ===
-<<<<<<< HEAD
 RUN_ID="13"    # check: ls runs/mySSL_eft_vmamba_tiny_polyp_Polyp_Superpix_sets_0_1shot/
 STEP="5000"    # 1000 / 2000 / 3000 / 4000 / 5000
-=======
-RUN_ID="1"     # check: ls runs/mySSL_eft_vmamba_tiny_polyp_Polyp_Superpix_sets_0_1shot/
-STEP="5001"    # 1001 / 2001 / 3001 / 4001 / 5001
->>>>>>> 900fff8f2897625990707a42f4d4b94a09c77c4e
 RELOAD_PATH=( "runs/mySSL_eft_vmamba_tiny_polyp_Polyp_Superpix_sets_0_1shot/${RUN_ID}/snapshots/${STEP}.pth" )
 # ======================================
 

@@ -1,0 +1,42 @@
+#!/bin/bash
+# Step 2 of distillation: train a VMamba-Tiny student against the pseudo-labels
+# produced by run_generate_pseudo_labels.sh.
+#
+# Output: a FewShotSeg checkpoint (vmamba_tiny encoder + grid_proto cls_unit)
+# that validation_protosam.py can load via reload_model_path.
+#
+# Cost target: ~3h. With image_size=256 and batch=4, a VMamba-Tiny step is
+# ~0.4-0.6s, so 3000 steps ~= 25-35 min — leaves plenty of room to grow.
+
+set -e
+GPUID=0
+export CUDA_VISIBLE_DEVICES=$GPUID
+
+IMAGE_ROOT="data/PolypDataset/TrainDataset/images"
+PSEUDO_ROOT="data/PolypDataset/TrainDataset/pseudo_masks_dinov2_l"
+OUTPUT_DIR="runs/distill_vmamba_tiny"
+
+if [ ! -d "$PSEUDO_ROOT" ]; then
+    echo "ERROR: $PSEUDO_ROOT not found. Run run_generate_pseudo_labels.sh first."
+    exit 1
+fi
+
+python train_distillation.py \
+    --modelname vmamba_tiny \
+    --image-root "$IMAGE_ROOT" \
+    --pseudo-root "$PSEUDO_ROOT" \
+    --output-dir "$OUTPUT_DIR" \
+    --image-size 256 \
+    --batch-size 4 \
+    --num-workers 4 \
+    --lr 1e-4 \
+    --weight-decay 1e-4 \
+    --n-steps 3000 \
+    --warmup-steps 200 \
+    --save-every 1000 \
+    --print-every 100 \
+    --ce-weight 1.0 \
+    --dice-weight 1.0 \
+    --seed 42 \
+    --freeze-stages 2 \
+    2>&1 | tee logs_distill_vmamba_tiny.txt

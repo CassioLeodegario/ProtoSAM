@@ -17,7 +17,7 @@ GPUID=0
 
 IMAGE_ROOT="data/PolypDataset/TrainDataset/images"
 PSEUDO_ROOT="data/PolypDataset/TrainDataset/pseudo_masks_dinov2_l"
-OUTPUT_DIR="runs/distill_vmamba_tiny_512_20k"
+OUTPUT_DIR="runs/distill_vmamba_tiny_672_accum4_10k"
 
 if [ ! -d "$PSEUDO_ROOT" ]; then
     echo "ERROR: $PSEUDO_ROOT not found. Run run_generate_pseudo_labels.sh first."
@@ -30,15 +30,16 @@ python train_distillation.py \
     --image-root "$IMAGE_ROOT" \
     --pseudo-root "$PSEUDO_ROOT" \
     --output-dir "$OUTPUT_DIR" \
-    --image-size 512 \
-    --batch-size 2 \
+    --image-size 672 \
+    --batch-size 1 \
+    --grad-accumulation 4 \
     --num-workers 4 \
     --lr 1e-4 \
     --weight-decay 1e-4 \
-    --n-steps 20000 \
-    --warmup-steps 1000 \
-    --save-every 4000 \
-    --print-every 400 \
+    --n-steps 10000 \
+    --warmup-steps 500 \
+    --save-every 2000 \
+    --print-every 200 \
     --ce-weight 1.0 \
     --dice-weight 1.0 \
     --seed 42 \

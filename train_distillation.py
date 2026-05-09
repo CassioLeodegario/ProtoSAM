@@ -120,6 +120,8 @@ def parse_args() -> argparse.Namespace:
                    help="disable training-time augmentation")
     p.add_argument("--freeze-stages", type=int, default=0,
                    help="number of VMamba stages to freeze (0–4, ignored for non-VMamba)")
+    p.add_argument("--grad-accumulation", type=int, default=1,
+                   help="accumulate gradients over N batches before optimizer step (simulates larger batch)")
     return p.parse_args()
 
 
@@ -193,10 +195,13 @@ def main() -> None:
 
     # --- loop ---
     model.train()
-    step = 0
+    step = 0        # optimizer steps (= batches / grad_accumulation)
+    micro = 0       # micro-batch counter within the current accumulation window
     t0 = time.time()
     running = {"ce": 0.0, "dice": 0.0, "total": 0.0}
+    accum = args.grad_accumulation
     pbar = tqdm(total=args.n_steps, desc="distill")
+    optim.zero_grad(set_to_none=True)
     while step < args.n_steps:
         for batch in loader:
             if step >= args.n_steps:
@@ -207,16 +212,21 @@ def main() -> None:
             logits = model(img)
             l_ce = F.cross_entropy(logits, mask)
             l_dice = dice_loss(logits, mask)
-            loss = args.ce_weight * l_ce + args.dice_weight * l_dice
-
-            optim.zero_grad(set_to_none=True)
+            # scale loss so the accumulated gradient matches a single-step update
+            loss = (args.ce_weight * l_ce + args.dice_weight * l_dice) / accum
             loss.backward()
-            optim.step()
-            sched.step()
+            micro += 1
 
             running["ce"] += float(l_ce.item())
             running["dice"] += float(l_dice.item())
-            running["total"] += float(loss.item())
+            running["total"] += float((loss * accum).item())
+
+            if micro % accum != 0:
+                continue  # accumulate more gradients before stepping
+
+            optim.step()
+            sched.step()
+            optim.zero_grad(set_to_none=True)
             step += 1
             pbar.update(1)
             pbar.set_postfix(ce=l_ce.item(), dice=l_dice.item(), lr=sched.get_last_lr()[0])

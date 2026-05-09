@@ -25,7 +25,7 @@ NWORKER=4
 LORA=0
 
 # === EDIT THIS to point at the distilled checkpoint ===
-RELOAD_PATH=( "runs/distill_vmamba_tiny_512_20k/distilled_vmamba_tiny_final.pth" )
+RELOAD_PATH=( "runs/distill_vmamba_tiny_672_accum4_10k/distilled_vmamba_tiny_final.pth" )
 # ======================================================
 
 DO_CCA="True"

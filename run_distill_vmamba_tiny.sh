@@ -30,15 +30,15 @@ python train_distillation.py \
     --image-root "$IMAGE_ROOT" \
     --pseudo-root "$PSEUDO_ROOT" \
     --output-dir "$OUTPUT_DIR" \
-    --image-size 256 \
-    --batch-size 4 \
+    --image-size 512 \
+    --batch-size 2 \
     --num-workers 4 \
     --lr 1e-4 \
     --weight-decay 1e-4 \
-    --n-steps 3000 \
-    --warmup-steps 200 \
-    --save-every 1000 \
-    --print-every 100 \
+    --n-steps 10000 \
+    --warmup-steps 500 \
+    --save-every 2000 \
+    --print-every 200 \
     --ce-weight 1.0 \
     --dice-weight 1.0 \
     --seed 42 \

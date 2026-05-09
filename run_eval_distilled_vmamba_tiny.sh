@@ -9,6 +9,7 @@
 set -e
 unset CUDA_VISIBLE_DEVICES
 GPUID1=0
+export WANDB_MODE=offline
 
 MODEL_NAME='vmamba_tiny'
 COARSE_PRED_ONLY="False"

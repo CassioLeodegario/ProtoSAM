@@ -22,6 +22,7 @@ if [ ! -d "$PSEUDO_ROOT" ]; then
 fi
 
 python train_distillation.py \
+    --gpu-id $GPUID \
     --modelname vmamba_tiny \
     --image-root "$IMAGE_ROOT" \
     --pseudo-root "$PSEUDO_ROOT" \

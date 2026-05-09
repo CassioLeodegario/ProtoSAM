@@ -96,6 +96,7 @@ def dice_loss(logits: torch.Tensor, target: torch.Tensor, eps: float = 1e-5) -> 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
+    p.add_argument("--gpu-id", type=int, default=0)
     p.add_argument("--modelname", default="vmamba_tiny", choices=list(EMBED_DIMS))
     p.add_argument("--image-root", required=True,
                    help="e.g. data/PolypDataset/TrainDataset/images")
@@ -154,12 +155,11 @@ def main() -> None:
     np.random.seed(args.seed)
     os.makedirs(args.output_dir, exist_ok=True)
 
-    if not torch.cuda.is_available():
-        raise RuntimeError(
-            "CUDA is required — VMamba uses a custom CUDA kernel with no CPU fallback. "
-            "Make sure CUDA_VISIBLE_DEVICES is set and the GPU is not fully occupied."
-        )
-    device = torch.device("cuda")
+    # Force CUDA initialisation before any availability check — mirrors what
+    # Sacred does via torch.cuda.set_device(). In some conda envs,
+    # is_available() returns False until set_device() is called explicitly.
+    torch.cuda.set_device(args.gpu_id)
+    device = torch.device("cuda", args.gpu_id)
     print(f"[init] device={device} model={args.modelname} image_size={args.image_size}")
 
     # --- data ---

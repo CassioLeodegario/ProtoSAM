@@ -8,8 +8,8 @@
 # Cost: ~1h on a single GPU (1305 images, ~3s each through the SAM-h pipeline).
 
 set -e
+unset CUDA_VISIBLE_DEVICES
 GPUID=0
-export CUDA_VISIBLE_DEVICES=$GPUID
 
 OUTPUT_DIR="data/PolypDataset/TrainDataset/pseudo_masks_dinov2_l"
 

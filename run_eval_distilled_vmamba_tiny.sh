@@ -7,8 +7,8 @@
 #   - DINOv2-L (teacher): Dice 0.6512
 
 set -e
+unset CUDA_VISIBLE_DEVICES
 GPUID1=0
-export CUDA_VISIBLE_DEVICES=$GPUID1
 
 MODEL_NAME='vmamba_tiny'
 COARSE_PRED_ONLY="False"

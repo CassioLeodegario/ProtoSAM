@@ -9,8 +9,11 @@
 # ~0.4-0.6s, so 3000 steps ~= 25-35 min — leaves plenty of room to grow.
 
 set -e
+# Let CUDA use whichever GPU the environment exposes — RunPod may allocate
+# any device index (e.g. /dev/nvidia6). Forcing CUDA_VISIBLE_DEVICES=0
+# hides the actual device when the index doesn't match.
+unset CUDA_VISIBLE_DEVICES
 GPUID=0
-export CUDA_VISIBLE_DEVICES=$GPUID
 
 IMAGE_ROOT="data/PolypDataset/TrainDataset/images"
 PSEUDO_ROOT="data/PolypDataset/TrainDataset/pseudo_masks_dinov2_l"

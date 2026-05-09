@@ -154,7 +154,12 @@ def main() -> None:
     np.random.seed(args.seed)
     os.makedirs(args.output_dir, exist_ok=True)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA is required — VMamba uses a custom CUDA kernel with no CPU fallback. "
+            "Make sure CUDA_VISIBLE_DEVICES is set and the GPU is not fully occupied."
+        )
+    device = torch.device("cuda")
     print(f"[init] device={device} model={args.modelname} image_size={args.image_size}")
 
     # --- data ---

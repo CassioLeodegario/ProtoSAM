@@ -9,8 +9,20 @@
 #   bash run_resolution_sweep.sh --only-dinov2
 #   bash run_resolution_sweep.sh --only-vmamba
 
-set -e
+set -eo pipefail
 unset CUDA_VISIBLE_DEVICES
+
+FAILED_RUNS=()
+
+run_eval() {
+    local label=$1; shift
+    if python3 "$@"; then
+        echo "[OK] $label"
+    else
+        echo "[SKIP] $label falhou (OOM ou erro) — continuando"
+        FAILED_RUNS+=("$label")
+    fi
+}
 GPUID=0
 
 SIZES=(256 384 512 672 768 1024)
@@ -35,18 +47,21 @@ if [ ! -f "$VMAMBA_CKPT" ] && [ $ONLY_DINOV2 -eq 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# DINOv2-L  (backbone pré-treinado, sem checkpoint extra)
+# Sweep intercalado: DINOv2 e VMamba por resolução crescente
 # ---------------------------------------------------------------------------
-if [ $ONLY_VMAMBA -eq 0 ]; then
-    echo "=========================================="
-    echo "  Sweep DINOv2-L  |  ${#SIZES[@]} resoluções"
-    echo "=========================================="
-    for SIZE in "${SIZES[@]}"; do
-        echo ""
+echo "=========================================="
+echo "  Sweep intercalado  |  ${#SIZES[@]} resoluções × 2 modelos"
+echo "=========================================="
+for SIZE in "${SIZES[@]}"; do
+    echo ""
+    echo "========== size=${SIZE} =========="
+
+    if [ $ONLY_VMAMBA -eq 0 ]; then
         echo "--- DINOv2-L  size=${SIZE} ---"
         LOGDIR="./test_polyp/sweep/dinov2_l14_size_${SIZE}"
         mkdir -p "$LOGDIR"
-        python3 validation_protosam.py with \
+        run_eval "dinov2_l14_size${SIZE}" \
+            validation_protosam.py with \
             modelname=dinov2_l14 \
             base_model=alpnet \
             coarse_pred_only=False \
@@ -73,23 +88,14 @@ if [ $ONLY_VMAMBA -eq 0 ]; then
             "input_size=($SIZE, $SIZE)" \
             wandb_project=protosam-polyp-sizes \
             2>&1 | tee "logs_sweep_dinov2_l14_size${SIZE}.txt"
-    done
-fi
+    fi
 
-# ---------------------------------------------------------------------------
-# VMamba-Tiny  (distilado)
-# ---------------------------------------------------------------------------
-if [ $ONLY_DINOV2 -eq 0 ]; then
-    echo ""
-    echo "=========================================="
-    echo "  Sweep VMamba-Tiny distilado  |  ${#SIZES[@]} resoluções"
-    echo "=========================================="
-    for SIZE in "${SIZES[@]}"; do
-        echo ""
+    if [ $ONLY_DINOV2 -eq 0 ]; then
         echo "--- VMamba-Tiny distil  size=${SIZE} ---"
         LOGDIR="./test_polyp/sweep/vmamba_tiny_distill_size_${SIZE}"
         mkdir -p "$LOGDIR"
-        python3 validation_protosam.py with \
+        run_eval "vmamba_tiny_size${SIZE}" \
+            validation_protosam.py with \
             modelname=vmamba_tiny \
             base_model=alpnet \
             coarse_pred_only=False \
@@ -116,8 +122,12 @@ if [ $ONLY_DINOV2 -eq 0 ]; then
             "input_size=($SIZE, $SIZE)" \
             wandb_project=protosam-polyp-sizes \
             2>&1 | tee "logs_sweep_vmamba_tiny_size${SIZE}.txt"
-    done
-fi
+    fi
+done
 
 echo ""
-echo "Sweep concluído. Resultados no W&B: https://wandb.ai/leodegario/protosam-polyp"
+echo "Sweep concluído. Resultados no W&B: https://wandb.ai/leodegario/protosam-polyp-sizes"
+if [ ${#FAILED_RUNS[@]} -gt 0 ]; then
+    echo "Runs que falharam (OOM ou erro):"
+    for r in "${FAILED_RUNS[@]}"; do echo "  - $r"; done
+fi

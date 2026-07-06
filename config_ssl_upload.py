@@ -119,6 +119,7 @@ def cfg():
     use_neg_points = False
     n_support = 1  # num support images
     protosam_sam_ver = "sam_h"  # or medsam
+    wandb_project = "protosam-polyp"
     # COCO dataset
     coco_image_dir = "data/COCO/val2017"
     coco_ann_file = "data/COCO/annotations/instances_val2017.json"

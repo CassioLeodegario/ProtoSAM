@@ -306,14 +306,25 @@ def main(_run, _config, _log):
     print(f"config do_cca: {_config['do_cca']}, use_bbox: {_config['use_bbox']}")
     
     # === W&B Experiment Tracking ===
+    _input_size = _config.get("input_size", [0])
+    _size_val = _input_size[0] if hasattr(_input_size, "__getitem__") else _input_size
+    _ckpt = _config.get("reload_model_path", "None") or "None"
+    _is_distilled = _ckpt != "None"
+    _run_name = (
+        f"{_config.get('modelname', 'unknown')}"
+        f"{'_distill' if _is_distilled else ''}"
+        f"_size{_size_val}"
+        f"_fold{_config.get('eval_fold', 0)}"
+    )
     wandb.init(
-        project="protosam-polyp",
+        project=_config.get("wandb_project", "protosam-polyp"),
         entity="leodegario",
+        name=_run_name,
         config={
             "backbone": _config.get("modelname", "unknown"),
             "sam_version": _config.get("protosam_sam_ver", "unknown"),
             "dataset": _config.get("dataset", "unknown"),
-            "input_size": _config.get("input_size", "unknown"),
+            "input_size": _size_val,
             "proto_grid": _config.get("proto_grid_size", "unknown"),
             "eval_fold": _config.get("eval_fold", 0),
             "support_idx": _config.get("support_idx", "unknown"),
@@ -322,8 +333,9 @@ def main(_run, _config, _log):
             "use_align": _config.get("usealign", False),
             "coarse_pred_only": _config.get("coarse_pred_only", False),
             "lora": _config.get("lora", 0),
+            "is_distilled": _is_distilled,
         },
-        tags=[_config.get("modelname", ""), _config.get("dataset", ""), _config.get("protosam_sam_ver", "")],
+        tags=[_config.get("modelname", ""), _config.get("dataset", ""), _config.get("protosam_sam_ver", ""), f"size{_size_val}"],
         reinit=True,
     )
     _start_time = time.time()

@@ -147,6 +147,8 @@ class FewShotSeg(nn.Module):
                     DEFAULT_FEATURE_SIZE, DEFAULT_FEATURE_SIZE), mode='bilinear')  # this is if h,w < (32,32)
         elif 'vmamba' in self.config['which_model']:
             # VMamba single-stage: use last stage features only
+            imgs_concat = F.interpolate(imgs_concat, size=(
+                self.image_size // 32 * 32, self.image_size // 32 * 32), mode='bilinear')
             outs = self.encoder(imgs_concat)
             img_fts = outs[-1]  # B, C, H, W
             if img_fts.shape[-1] < DEFAULT_FEATURE_SIZE:

@@ -348,6 +348,7 @@ def main(_run, _config, _log):
     model = get_model(_config)
     model = model.to(torch.device("cuda"))
     model.eval()
+    torch.cuda.reset_peak_memory_stats()
     
     sam_trans = ResizeLongestSide(1024)
     if _config["dataset"].lower().startswith(POLYPS):

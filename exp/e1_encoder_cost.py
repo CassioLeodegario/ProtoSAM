@@ -57,45 +57,109 @@ class FeatWrap(nn.Module):
         return self.fss.get_features(x)
 
 
-def capture_tokens_real(model, x):
+def capture_tokens_real(model, modelname, x):
     """
     Tokens reais que o encoder produz ANTES do upsample para 32x32.
-    Medido por hook, não digitado a partir de uma fórmula.
+    Medido de dentro do forward, não digitado a partir de uma fórmula.
+
+    O DINOv2 exige envolver forward_features: get_features() chama esse método
+    diretamente, e register_forward_hook só dispara no __call__.
     """
     grabbed = {}
+    enc = model.encoder
 
-    def hook(_mod, _inp, out):
-        if isinstance(out, dict) and "x_norm_patchtokens" in out:      # DINOv2
-            hw = out["x_norm_patchtokens"].shape[1]
-            grabbed["tokens_real"] = int(round(hw ** 0.5))
-        elif isinstance(out, (list, tuple)) and torch.is_tensor(out[-1]):  # VMamba
-            grabbed["tokens_real"] = int(out[-1].shape[-1])
-        elif torch.is_tensor(out):
-            grabbed["tokens_real"] = int(out.shape[-1])
+    if "dino" in modelname:
+        orig = enc.forward_features
 
-    h = model.encoder.register_forward_hook(hook)
+        def wrapped(*a, **kw):
+            out = orig(*a, **kw)
+            if isinstance(out, dict) and "x_norm_patchtokens" in out:
+                grabbed["t"] = int(round(out["x_norm_patchtokens"].shape[1] ** 0.5))
+            return out
+
+        enc.forward_features = wrapped
+        try:
+            with torch.no_grad():
+                model.get_features(x)
+        finally:
+            enc.forward_features = orig
+    else:
+        def hook(_mod, _inp, out):
+            if isinstance(out, (list, tuple)) and torch.is_tensor(out[-1]):
+                grabbed["t"] = int(out[-1].shape[-1])
+            elif torch.is_tensor(out):
+                grabbed["t"] = int(out.shape[-1])
+
+        h = enc.register_forward_hook(hook)
+        try:
+            with torch.no_grad():
+                model.get_features(x)
+        finally:
+            h.remove()
+    return grabbed.get("t")
+
+
+def _sdpa_flop_jit(inputs, outputs):
+    """
+    FLOPs de scaled_dot_product_attention, na convenção do fvcore (multiply-add
+    conta como 1). q,k,v chegam como (B, H, N, d).
+        QK^T      : B*H*Nq*Nk*d
+        attn @ V  : B*H*Nq*Nk*d
+    """
+    q = inputs[0].type().sizes()
+    k = inputs[1].type().sizes()
+    b, h, n_q, d = q[0], q[1], q[2], q[3]
+    n_k = k[2]
+    return 2 * b * h * n_q * n_k * d
+
+
+def _supported_ops():
+    """
+    Handlers para as operações que o fvcore não modela sozinho.
+
+    - selective scan: usa o contador dos PRÓPRIOS AUTORES do VMamba
+      (models/vmamba.py:974), fórmula 9*B*L*D*N do artigo.
+    - SDPA: handler nosso, ver _sdpa_flop_jit.
+    - None = ignorado de propósito (elementwise/permutação), mesma convenção que
+      o fvcore usa para relu e que os autores do VMamba adotam.
+    """
+    from functools import partial
+    from models.vmamba import selective_scan_flop_jit
+    return {
+        "aten::silu": None, "aten::neg": None, "aten::exp": None,
+        "aten::flip": None, "aten::gelu": None, "aten::mul": None,
+        "aten::add": None, "aten::sub": None, "aten::div": None,
+        "aten::softmax": None, "aten::sigmoid": None,
+        "aten::upsample_bicubic2d": None, "aten::upsample_bilinear2d": None,
+        "prim::PythonOp.CrossScan": None,
+        "prim::PythonOp.CrossMerge": None,
+        "prim::PythonOp.CrossScanTritonF": None,
+        "prim::PythonOp.CrossMergeTritonF": None,
+        "prim::PythonOp.SelectiveScanCuda": partial(
+            selective_scan_flop_jit, backend="prefixsum", verbose=False),
+        "aten::scaled_dot_product_attention": _sdpa_flop_jit,
+    }
+
+
+def measure_flops(module, x):
+    """
+    GFLOPs de um módulo. Devolve (gflops, ops_nao_suportadas, por_op).
+
+    ops_nao_suportadas vazio é condição de aceitação: se algo aparecer ali, o
+    número está subestimado e não deve ser reportado.
+    """
     try:
-        with torch.no_grad():
-            model.get_features(x)
-    finally:
-        h.remove()
-    return grabbed.get("tokens_real")
-
-
-def measure_flops(model, x):
-    """GFLOPs de get_features. Devolve (gflops, ops_nao_suportadas)."""
-    try:
-        from fvcore.nn import FlopCountAnalysis
+        from fvcore.nn import flop_count
     except ImportError:
-        return None, {"fvcore": "ausente"}
+        return None, {"fvcore": "ausente"}, None
     try:
-        fca = FlopCountAnalysis(FeatWrap(model).eval(), x)
-        fca.unsupported_ops_warnings(False)
-        fca.uncalled_modules_warnings(False)
-        total = fca.total()
-        return total / 1e9, dict(fca.unsupported_ops())
+        gflops_by_op, unsupported = flop_count(
+            model=module.eval(), inputs=(x,), supported_ops=_supported_ops())
+        return (float(sum(gflops_by_op.values())),
+                dict(unsupported),
+                {k: round(v, 4) for k, v in gflops_by_op.items()})
     except Exception as e:
-        return None, {"error": f"{type(e).__name__}: {e}"}
+        return None, {"error": f"{type(e).__name__}: {e}"}, None
 
 
 @torch.no_grad()
@@ -137,8 +201,11 @@ def bench_one(modelname, size, device, do_flops=True):
     torch.cuda.synchronize(device)
     times = np.array([starts[i].elapsed_time(ends[i]) for i in range(REPEATS)])
 
-    tokens_real = capture_tokens_real(model, x)
-    gflops, unsupported = measure_flops(model, x) if do_flops else (None, None)
+    tokens_real = capture_tokens_real(model, modelname, x)
+    if do_flops:
+        gflops, unsupported, by_op = measure_flops(FeatWrap(model), x)
+    else:
+        gflops, unsupported, by_op = None, None, None
     n_params = sum(p.numel() for p in model.encoder.parameters())
 
     rec = {
@@ -159,6 +226,7 @@ def bench_one(modelname, size, device, do_flops=True):
         "vram_total_mb": round(vram_total, 1),
         "encoder_params_M": round(n_params / 1e6, 2),
         "flops_unsupported_ops": json.dumps(unsupported) if unsupported else None,
+        "flops_by_op": json.dumps(by_op) if by_op else None,
     }
 
     del model, x
@@ -204,17 +272,9 @@ def bench_sam_encoder(device, size=1024, do_flops=True):
     torch.cuda.synchronize(device)
     times = np.array([starts[i].elapsed_time(ends[i]) for i in range(REPEATS)])
 
-    gflops, unsupported = (None, None)
+    gflops, unsupported, by_op = (None, None, None)
     if do_flops:
-        try:
-            from fvcore.nn import FlopCountAnalysis
-            fca = FlopCountAnalysis(enc, x)
-            fca.unsupported_ops_warnings(False)
-            fca.uncalled_modules_warnings(False)
-            gflops = fca.total() / 1e9
-            unsupported = dict(fca.unsupported_ops())
-        except Exception as e:
-            unsupported = {"error": f"{type(e).__name__}: {e}"}
+        gflops, unsupported, by_op = measure_flops(enc, x)
 
     rec = {
         "encoder": "sam_h_image_encoder", "input_size": size,
@@ -231,6 +291,7 @@ def bench_sam_encoder(device, size=1024, do_flops=True):
         "vram_total_mb": round(peak / 1024 ** 2, 1),
         "encoder_params_M": round(sum(p.numel() for p in enc.parameters()) / 1e6, 2),
         "flops_unsupported_ops": json.dumps(unsupported) if unsupported else None,
+        "flops_by_op": json.dumps(by_op) if by_op else None,
     }
     del enc, x
     torch.cuda.empty_cache()
@@ -241,6 +302,13 @@ def check_criteria(records):
     """Critérios de aceitação do guia. Devolve lista de falhas."""
     fails = []
     by = {(r["encoder"], r["input_size"]): r for r in records}
+
+    # FLOPs só vale se TUDO foi contabilizado — senão o número engana.
+    for r in records:
+        u = r.get("flops_unsupported_ops")
+        if u and u != "{}":
+            fails.append(f"{r['encoder']}@{r['input_size']}: FLOPs subestimado, "
+                         f"ops nao contabilizadas: {u}")
 
     a, b = by.get(("vmamba_tiny", 512)), by.get(("vmamba_tiny", 1024))
     if a and b and a["gflops"] and b["gflops"]:

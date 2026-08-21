@@ -286,7 +286,7 @@ class PolypDataset(data.Dataset):
                 
         return n_support_images, n_support_labels
 
-    def get_support(self, n_support=1, support_image_dir=None, support_mask_dir=None, text_file=None):
+    def get_support(self, n_support=1, support_image_dir=None, support_mask_dir=None, text_file=None, support_idx=None):
         """
         Get support set from specified directories, text file or from the dataset itself
         """
@@ -295,12 +295,18 @@ class PolypDataset(data.Dataset):
         elif text_file is not None:
             support_image_paths, support_gt_paths = self.get_support_from_text_file(text_file, n_support=n_support)
         else:
-            # randomly sample n_support images and masks from the dataset
-            indices = random.choices(range(self.size), k=n_support)
-            # indices = list(range(n_support))
-            print(f"support indices:{indices}")
+            # Explicit indices when given; fall back to the historical random draw.
+            # -1 is the "unset" sentinel inherited from the CT/MRI protocol.
+            valid = support_idx is not None and all(i >= 0 for i in support_idx)
+            if valid:
+                indices = [i % self.size for i in support_idx][:n_support]
+                print(f"support indices (explicit):{indices}")
+            else:
+                indices = random.choices(range(self.size), k=n_support)
+                print(f"support indices (random):{indices}")
             support_image_paths = [self.images[index] for index in indices]
             support_gt_paths = [self.gts[index] for index in indices]
+            print(f"support files:{support_image_paths}")
             
         support_images = []
         support_gts = []

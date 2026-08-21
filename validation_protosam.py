@@ -247,7 +247,8 @@ def get_model(_config) -> ProtoSAM:
 
 def get_support_set_polyps(_config, dataset:PolypDataset):
     n_support = _config["n_support"]
-    (support_images, support_labels, case) = dataset.get_support(n_support=n_support)
+    (support_images, support_labels, case) = dataset.get_support(
+        n_support=n_support, support_idx=_config.get("support_idx"))
 
     return support_images, support_labels, case
 

@@ -131,6 +131,10 @@ def _supported_ops():
         "aten::flip": None, "aten::gelu": None, "aten::mul": None,
         "aten::add": None, "aten::sub": None, "aten::div": None,
         "aten::softmax": None, "aten::sigmoid": None,
+        # entranhas do LayerNorm2d customizado do SAM e o padding da atencao
+        # em janelas: elementwise, mesma convencao de custo zero
+        "aten::rsub": None, "aten::pad": None, "aten::mean": None,
+        "aten::pow": None, "aten::sqrt": None,
         "aten::upsample_bicubic2d": None, "aten::upsample_bilinear2d": None,
         "prim::PythonOp.CrossScan": None,
         "prim::PythonOp.CrossMerge": None,

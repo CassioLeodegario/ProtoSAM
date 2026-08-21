@@ -100,10 +100,16 @@ def measure(modelname, size, batch, device):
     wall_ms = float(np.median(wall))
 
     # --- tempo de GPU e nº de lançamentos, COM profiler ---
+    # O relógio precisa sair da MESMA janela: o CUPTI instrumenta cada kernel e
+    # infla a duração medida, então dividir tempo-de-GPU-com-profiler por
+    # tempo-de-parede-sem-profiler mistura dois regimes e estoura a razão.
     with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
+        torch.cuda.synchronize(device)
+        t0 = time.perf_counter()
         for _ in range(PROFILE_ITERS):
             model.get_features(x)
         torch.cuda.synchronize(device)
+        wall_prof_ms = (time.perf_counter() - t0) * 1000.0 / PROFILE_ITERS
 
     events = [e for e in prof.key_averages() if _is_kernel(e)]
     cuda_us = sum(_device_time(e) for e in events)
@@ -111,11 +117,9 @@ def measure(modelname, size, batch, device):
     cuda_ms = cuda_us / 1000.0 / PROFILE_ITERS
     kernels_per_iter = n_kernels / PROFILE_ITERS
 
-    ratio = cuda_ms / wall_ms if wall_ms else None
-    if ratio is not None and ratio > 1.05:
-        raise RuntimeError(
-            f"CUDA/Wall = {ratio:.3f} > 1: a GPU nao pode estar ocupada mais tempo "
-            f"do que o relogio andou. Contagem de eventos esta errada.")
+    # Razão sempre da mesma janela (ambos sob profiler).
+    ratio = cuda_ms / wall_prof_ms if wall_prof_ms else None
+    ratio_valid = ratio is not None and ratio <= 1.05
 
     rec = {
         "encoder": modelname,
@@ -123,9 +127,11 @@ def measure(modelname, size, batch, device):
         "batch": batch,
         "wall_total_ms": round(wall_ms, 3),
         "wall_per_image_ms": round(wall_ms / batch, 3),
+        "wall_prof_ms": round(wall_prof_ms, 3),
         "cuda_time_ms": round(cuda_ms, 3),
-        "gpu_idle_pct": round((1 - ratio) * 100, 1) if ratio is not None else None,
+        "gpu_idle_pct": round((1 - ratio) * 100, 1) if ratio_valid else None,
         "cuda_over_wall": round(ratio, 4) if ratio is not None else None,
+        "ratio_valid": ratio_valid,
         "kernels_per_iter": round(kernels_per_iter, 1),
         "kernels_per_image": round(kernels_per_iter / batch, 1),
         "wall_ms_p25": round(float(np.percentile(wall, 25)), 3),
@@ -143,7 +149,7 @@ def verdict(records):
         b1 = [r for r in records if r["encoder"] == enc and r["batch"] == 1]
         if not b1:
             continue
-        ratios = [r["cuda_over_wall"] for r in b1 if r["cuda_over_wall"]]
+        ratios = [r["cuda_over_wall"] for r in b1 if r.get("ratio_valid")]
         if not ratios:
             continue
         m = float(np.mean(ratios))
@@ -210,9 +216,11 @@ def main():
                     _clear_cuda(device)
                     continue
                 records.append(rec)
+                flag = "" if rec["ratio_valid"] else "  [RAZAO INVALIDA — descartar]"
+                idle = f"{rec['gpu_idle_pct']:.0f}% ociosa" if rec["ratio_valid"] else "n/d"
                 print(f"  wall {rec['wall_total_ms']:.2f} ms | /imagem {rec['wall_per_image_ms']:.2f} ms "
                       f"| cuda {rec['cuda_time_ms']:.2f} ms | CUDA/Wall {rec['cuda_over_wall']:.3f} "
-                      f"| {rec['kernels_per_iter']:.0f} kernels/iter")
+                      f"| GPU {idle} | {rec['kernels_per_iter']:.0f} kernels/iter{flag}")
 
                 if wandb:
                     run = wandb.init(

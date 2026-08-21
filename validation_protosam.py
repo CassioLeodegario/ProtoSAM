@@ -195,6 +195,12 @@ def get_alpnet_model(_config) -> ModelWrapper:
        _config["model"]
     )
     alpnet.cuda()
+    # ProtoSAM.eval() cannot reach the wrapped FewShotSeg: ALPNetWrapper is a
+    # plain object, so nn.Module never registers it as a submodule. Opt-in flag
+    # to measure what putting the encoder in eval mode actually changes.
+    if os.environ.get("PROTOSAM_ENCODER_EVAL") == "1":
+        alpnet.eval()
+        print("[D6] encoder forced to eval() mode")
     alpnet_wrapper = ALPNetWrapper(alpnet)
     
     return alpnet_wrapper

@@ -14,6 +14,7 @@ Uso:
 """
 import argparse
 import csv
+import gc
 import json
 import os
 import sys
@@ -141,12 +142,26 @@ def _supported_ops():
     }
 
 
+# Operações de custo zero, declaradas de propósito. CrossScan/CrossMerge apenas
+# reordenam o mapa de features nas 4 direções de varredura e juntam de volta:
+# permutação e cópia, sem multiplicação-acumulação. Os PRÓPRIOS AUTORES do VMamba
+# as excluem da contagem oficial (models/vmamba.py:2044-2045, comentadas dentro
+# de supported_ops), então esta escolha reproduz o FLOPs reportado no artigo.
+ZERO_FLOP_OPS = {
+    "prim::PythonOp.CrossScan",
+    "prim::PythonOp.CrossMerge",
+    "prim::PythonOp.CrossScanTritonF",
+    "prim::PythonOp.CrossMergeTritonF",
+}
+
+
 def measure_flops(module, x):
     """
-    GFLOPs de um módulo. Devolve (gflops, ops_nao_suportadas, por_op).
+    GFLOPs de um módulo. Devolve (gflops, ops_nao_contabilizadas, por_op).
 
-    ops_nao_suportadas vazio é condição de aceitação: se algo aparecer ali, o
-    número está subestimado e não deve ser reportado.
+    ops_nao_contabilizadas vazio é condição de aceitação: se aparecer qualquer
+    operação que NÃO esteja em ZERO_FLOP_OPS, o número está subestimado e não
+    deve ser reportado.
     """
     try:
         from fvcore.nn import flop_count
@@ -155,18 +170,33 @@ def measure_flops(module, x):
     try:
         gflops_by_op, unsupported = flop_count(
             model=module.eval(), inputs=(x,), supported_ops=_supported_ops())
+        real_unsupported = {k: v for k, v in dict(unsupported).items()
+                            if k not in ZERO_FLOP_OPS}
         return (float(sum(gflops_by_op.values())),
-                dict(unsupported),
+                real_unsupported,
                 {k: round(v, 4) for k, v in gflops_by_op.items()})
     except Exception as e:
         return None, {"error": f"{type(e).__name__}: {e}"}, None
 
 
+def _clear_cuda(device):
+    """
+    nn.Module tem ciclos de referência (hooks, _modules), então `del` não libera
+    na hora — sem isto a linha de base da próxima medição vem contaminada pelo
+    modelo anterior, e a VRAM de pesos sai subestimada.
+    """
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.synchronize(device)
+    return torch.cuda.memory_allocated(device)
+
+
 @torch.no_grad()
 def bench_one(modelname, size, device, do_flops=True):
-    torch.cuda.empty_cache()
+    base = _clear_cuda(device)
+    if base > 8 * 1024 ** 2:  # >8 MB residuais = algo do modelo anterior ficou vivo
+        print(f"  [aviso] linha de base nao zerou: {base / 1024**2:.1f} MB residuais")
     torch.cuda.reset_peak_memory_stats(device)
-    base = torch.cuda.memory_allocated(device)
 
     model = build_model(modelname, size).to(device).eval()
     torch.cuda.synchronize(device)
@@ -230,7 +260,7 @@ def bench_one(modelname, size, device, do_flops=True):
     }
 
     del model, x
-    torch.cuda.empty_cache()
+    _clear_cuda(device)
     return rec
 
 
@@ -243,8 +273,7 @@ def bench_sam_encoder(device, size=1024, do_flops=True):
         print(f"  [skip] SAM-H: checkpoint ausente em {ckpt}")
         return None
 
-    torch.cuda.empty_cache()
-    base = torch.cuda.memory_allocated(device)
+    base = _clear_cuda(device)
     enc = sam_model_registry["vit_h"](checkpoint=ckpt).image_encoder.to(device).eval()
     torch.cuda.synchronize(device)
     vram_weights = (torch.cuda.memory_allocated(device) - base) / 1024 ** 2
@@ -294,7 +323,7 @@ def bench_sam_encoder(device, size=1024, do_flops=True):
         "flops_by_op": json.dumps(by_op) if by_op else None,
     }
     del enc, x
-    torch.cuda.empty_cache()
+    _clear_cuda(device)
     return rec
 
 

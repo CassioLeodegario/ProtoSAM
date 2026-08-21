@@ -71,6 +71,11 @@ class FewShotSeg(nn.Module):
                 'facebookresearch/dinov2', 'dinov2_vitb14')
             self.config['feature_hw'] = [max(
                 self.image_size//14, DEFAULT_FEATURE_SIZE), max(self.image_size//14, DEFAULT_FEATURE_SIZE)]
+        elif self.config['which_model'] == 'dinov2_s14':
+            self.encoder = torch.hub.load(
+                'facebookresearch/dinov2', 'dinov2_vits14')
+            self.config['feature_hw'] = [max(
+                self.image_size//14, DEFAULT_FEATURE_SIZE), max(self.image_size//14, DEFAULT_FEATURE_SIZE)]
         elif self.config['which_model'] == 'vmamba_tiny':
             self.encoder = Backbone_VSSM(
                 out_indices=(3,),
@@ -168,7 +173,9 @@ class FewShotSeg(nn.Module):
 
         if self.config['cls_name'] == 'grid_proto':
             embed_dim = 256
-            if 'dinov2_b14' in self.config['which_model']:
+            if 'dinov2_s14' in self.config['which_model']:
+                embed_dim = 384
+            elif 'dinov2_b14' in self.config['which_model']:
                 embed_dim = 768
             elif 'dinov2_l14' in self.config['which_model']:
                 embed_dim = 1024

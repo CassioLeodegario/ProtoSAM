@@ -320,32 +320,48 @@ def main(_run, _config, _log):
     _size_val = _input_size[0] if hasattr(_input_size, "__getitem__") else _input_size
     _ckpt = _config.get("reload_model_path", "None") or "None"
     _is_distilled = _ckpt != "None"
-    _run_name = (
-        f"{_config.get('modelname', 'unknown')}"
-        f"{'_distill' if _is_distilled else ''}"
-        f"_size{_size_val}"
-        f"_fold{_config.get('eval_fold', 0)}"
-    )
+    _supp = _config.get("support_idx") or []
+    _supp_tag = f"sup{_supp[0]}" if _supp and _supp[0] >= 0 else "suprand"
+    _variant = "distill" if _is_distilled else "base"
+    _exp = _config.get("wandb_exp") or "eval"
+    # Convenção do guia: {exp}__{encoder}__{res}__{extra}__s{seed}.
+    # Sem "fold": eval_fold é resto do protocolo de CT/MRI e não é fold aqui.
+    _run_name = (f"{_exp}__{_config.get('modelname', 'unknown')}__{_size_val}"
+                 f"__{_variant}_{_supp_tag}__s{_config.get('seed', 42)}")
+
+    try:
+        from exp.envinfo import collect as _collect_env
+        _env = _collect_env()
+    except Exception as _e:
+        _env = {"envinfo_error": f"{type(_e).__name__}: {_e}"}
+
     wandb.init(
         project=_config.get("wandb_project", "protosam-polyp"),
         entity="leodegario",
         name=_run_name,
+        group=_config.get("wandb_group") or None,
         config={
+            **_env,
             "backbone": _config.get("modelname", "unknown"),
             "sam_version": _config.get("protosam_sam_ver", "unknown"),
             "dataset": _config.get("dataset", "unknown"),
+            "split": "fixed_test_100",
             "input_size": _size_val,
             "proto_grid": _config.get("proto_grid_size", "unknown"),
-            "eval_fold": _config.get("eval_fold", 0),
-            "support_idx": _config.get("support_idx", "unknown"),
+            "support_idx": _supp,
             "seed": _config.get("seed", 42),
             "do_cca": _config.get("do_cca", False),
             "use_align": _config.get("usealign", False),
             "coarse_pred_only": _config.get("coarse_pred_only", False),
             "lora": _config.get("lora", 0),
             "is_distilled": _is_distilled,
+            "checkpoint": _ckpt,
+            "encoder_eval_mode": os.environ.get("PROTOSAM_ENCODER_EVAL", "1") == "1",
+            "dtype": "fp32",
+            "batch_size": 1,
         },
-        tags=[_config.get("modelname", ""), _config.get("dataset", ""), _config.get("protosam_sam_ver", ""), f"size{_size_val}"],
+        tags=[_config.get("modelname", ""), _config.get("dataset", ""),
+              _config.get("protosam_sam_ver", ""), f"size{_size_val}", _variant],
         reinit=True,
     )
     _start_time = time.time()
@@ -359,6 +375,19 @@ def main(_run, _config, _log):
     model = model.to(torch.device("cuda"))
     model.eval()
     torch.cuda.reset_peak_memory_stats()
+
+    # D3: granularidade real entregue ao ALP, lida do modelo em vez de digitada.
+    # D6: registra em que modo o encoder ficou, para a run não ser ambígua.
+    try:
+        _fss = model.coarse_segmentation_model.model
+        _patch = 14 if "dino" in _config.get("modelname", "") else 32
+        wandb.config.update({
+            "feature_hw_alp": _fss.config.get("feature_hw", [None])[0],
+            "tokens_real": _size_val // _patch,
+            "encoder_training_flag": _fss.training,
+        }, allow_val_change=True)
+    except Exception as _e:
+        print(f"[wandb] nao foi possivel registrar feature_hw/tokens: {_e}")
     
     sam_trans = ResizeLongestSide(1024)
     if _config["dataset"].lower().startswith(POLYPS):
@@ -420,6 +449,12 @@ def main(_run, _config, _log):
     elif is_coco_ds:
         support_images, support_fg_mask, case = get_support_set_coco(_config, tr_dataset)
         _log.info(f'COCO support set: category="{case}", n={len(support_images)}')
+
+    # Qual imagem serviu de suporte fica gravado na run, não só no log.
+    _supp_files = getattr(tr_dataset, "last_support_paths", None)
+    if _supp_files:
+        wandb.config.update({"support_files": _supp_files}, allow_val_change=True)
+        _log.info(f'support files: {_supp_files}')
         
     with tqdm(testloader) as pbar: 
         for idx, sample_batched in enumerate(tqdm(testloader)):

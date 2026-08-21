@@ -307,7 +307,11 @@ class PolypDataset(data.Dataset):
             support_image_paths = [self.images[index] for index in indices]
             support_gt_paths = [self.gts[index] for index in indices]
             print(f"support files:{support_image_paths}")
-            
+
+        # Guardado para que a run possa registrar exatamente qual imagem serviu
+        # de suporte, sem depender de arqueologia de log.
+        self.last_support_paths = list(support_image_paths)
+
         support_images = []
         support_gts = []
         

@@ -64,6 +64,20 @@ def _device_time(evt):
     return 0.0
 
 
+def _is_kernel(evt):
+    """
+    key_averages() traz operações da CPU (aten::conv2d, ...) E os kernels que
+    elas lançaram. As operações da CPU recebem o tempo de GPU dos filhos, então
+    somar tudo conta o mesmo trabalho duas vezes — foi assim que a primeira
+    versão produziu CUDA/Wall = 2,7, que é fisicamente impossível numa stream.
+    Só eventos de dispositivo valem.
+    """
+    dt = getattr(evt, "device_type", None)
+    if dt is None:
+        return False
+    return str(dt).endswith("CUDA") or str(dt).endswith("PrivateUse1")
+
+
 @torch.no_grad()
 def measure(modelname, size, batch, device):
     _clear_cuda(device)
@@ -91,11 +105,17 @@ def measure(modelname, size, batch, device):
             model.get_features(x)
         torch.cuda.synchronize(device)
 
-    events = prof.key_averages()
+    events = [e for e in prof.key_averages() if _is_kernel(e)]
     cuda_us = sum(_device_time(e) for e in events)
-    n_kernels = sum(e.count for e in events if _device_time(e) > 0)
+    n_kernels = sum(e.count for e in events)
     cuda_ms = cuda_us / 1000.0 / PROFILE_ITERS
     kernels_per_iter = n_kernels / PROFILE_ITERS
+
+    ratio = cuda_ms / wall_ms if wall_ms else None
+    if ratio is not None and ratio > 1.05:
+        raise RuntimeError(
+            f"CUDA/Wall = {ratio:.3f} > 1: a GPU nao pode estar ocupada mais tempo "
+            f"do que o relogio andou. Contagem de eventos esta errada.")
 
     rec = {
         "encoder": modelname,
@@ -104,7 +124,8 @@ def measure(modelname, size, batch, device):
         "wall_total_ms": round(wall_ms, 3),
         "wall_per_image_ms": round(wall_ms / batch, 3),
         "cuda_time_ms": round(cuda_ms, 3),
-        "cuda_over_wall": round(cuda_ms / wall_ms, 4) if wall_ms else None,
+        "gpu_idle_pct": round((1 - ratio) * 100, 1) if ratio is not None else None,
+        "cuda_over_wall": round(ratio, 4) if ratio is not None else None,
         "kernels_per_iter": round(kernels_per_iter, 1),
         "kernels_per_image": round(kernels_per_iter / batch, 1),
         "wall_ms_p25": round(float(np.percentile(wall, 25)), 3),

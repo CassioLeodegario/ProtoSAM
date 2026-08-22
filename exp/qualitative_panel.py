@@ -92,14 +92,22 @@ def dice_of(pred, gt):
 
 
 def to_display(img):
-    """Tensor normalizado -> RGB em [0,1] para exibicao."""
+    """
+    Tensor do dataset -> RGB em [0,1], com a cor FIEL.
+
+    Com sam_trans a media e o desvio do dataset viram 0 e 1, entao o tensor ja
+    esta em escala 0-255: basta dividir. Normalizar por min-max reequilibraria
+    os canais e deixaria o tecido azulado em vez de rosado.
+    """
     a = np.asarray(img)
     if a.ndim == 3 and a.shape[0] in (1, 3):
         a = a.transpose(1, 2, 0)
     if a.ndim == 3 and a.shape[2] == 1:
         a = a[:, :, 0]
     a = a.astype(np.float64)
-    return (a - a.min()) / (a.max() - a.min() + 1e-8)
+    if a.max() > 1.5:
+        return np.clip(a / 255.0, 0.0, 1.0)
+    return np.clip(a, 0.0, 1.0)
 
 
 def show(ax, base, mask=None, color=None, title=None, sub=None):

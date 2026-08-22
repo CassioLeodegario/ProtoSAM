@@ -254,6 +254,54 @@ def get_model(_config) -> ProtoSAM:
     return model
 
 
+# === E4: decomposição do tempo por imagem =====================================
+# Inerte a menos que PROTOSAM_TIMING=1. Instrumenta de FORA, sem alterar
+# ProtoSAM.py nem grid_proto_fewshot.py: envolve get_features (encoder), o wrapper
+# do modelo grosseiro (encoder + protótipos) e os dois métodos do SamPredictor.
+TIMING_ON = os.environ.get("PROTOSAM_TIMING") == "1"
+_ACC = {"encoder": 0.0, "coarse": 0.0, "sam": 0.0}
+_PER_IMAGE = []
+
+
+def _sync_now():
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+
+def _timed(fn, bucket):
+    def wrapper(*args, **kwargs):
+        _sync_now()
+        t0 = time.perf_counter()
+        out = fn(*args, **kwargs)
+        _sync_now()
+        _ACC[bucket] += time.perf_counter() - t0
+        return out
+    return wrapper
+
+
+def install_timers(model):
+    """Devolve o modelo com os cronômetros instalados."""
+    fss = model.coarse_segmentation_model.model
+    fss.get_features = _timed(fss.get_features, "encoder")
+
+    inner = model.coarse_segmentation_model
+
+    class _CoarseProxy:
+        def __call__(self, *a, **kw):
+            return _timed(inner.__call__, "coarse")(*a, **kw)
+
+        def __getattr__(self, name):
+            return getattr(inner, name)
+
+    model.coarse_segmentation_model = _CoarseProxy()
+
+    for meth in ("set_image", "predict"):
+        if hasattr(model.predictor, meth):
+            setattr(model.predictor, meth, _timed(getattr(model.predictor, meth), "sam"))
+    print("[E4] cronometros instalados (encoder / coarse / sam)")
+    return model
+
+
 def get_support_set_polyps(_config, dataset:PolypDataset):
     n_support = _config["n_support"]
     (support_images, support_labels, case) = dataset.get_support(
@@ -388,6 +436,9 @@ def main(_run, _config, _log):
         }, allow_val_change=True)
     except Exception as _e:
         print(f"[wandb] nao foi possivel registrar feature_hw/tokens: {_e}")
+
+    if TIMING_ON:
+        model = install_timers(model)
     
     sam_trans = ResizeLongestSide(1024)
     if _config["dataset"].lower().startswith(POLYPS):
@@ -478,6 +529,11 @@ def main(_run, _config, _log):
                 continue
             
             n_try = 1
+            if TIMING_ON:
+                for _k in _ACC:
+                    _ACC[_k] = 0.0
+                _sync_now()
+                _t_img0 = time.perf_counter()
             with torch.no_grad():
                 coarse_model_input = InputFactory.create_input(
                                         input_type=_config["base_model"],
@@ -494,6 +550,19 @@ def main(_run, _config, _log):
                     
                 query_pred, scores = model(
                         query_images, coarse_model_input, degrees_rotate=0)
+            if TIMING_ON:
+                _sync_now()
+                _tot = (time.perf_counter() - _t_img0) * 1000.0
+                _enc = _ACC["encoder"] * 1000.0
+                _coarse = _ACC["coarse"] * 1000.0
+                _sam = _ACC["sam"] * 1000.0
+                _PER_IMAGE.append({
+                    "total_ms": _tot,
+                    "encoder_ms": _enc,
+                    "alp_ms": _coarse - _enc,      # protótipos, sem o encoder
+                    "sam_ms": _sam,
+                    "prompts_ms": _tot - _coarse - _sam,  # CCA, bbox, pontos
+                })
             query_pred = query_pred.cpu().detach()
                 
             if _config["debug"]:
@@ -556,6 +625,22 @@ def main(_run, _config, _log):
     _log.info(f'mar_val batches meanRec: {m_meanRec}')
     _log.info(f'mar_val batches meanIOU: {m_meanIOU}')
     
+    # === E4: decomposição do tempo por imagem ===
+    if TIMING_ON and _PER_IMAGE:
+        _keys = ["encoder_ms", "alp_ms", "prompts_ms", "sam_ms", "total_ms"]
+        _med = {k: float(np.median([r[k] for r in _PER_IMAGE])) for k in _keys}
+        _frac = _med["encoder_ms"] / _med["total_ms"] if _med["total_ms"] else 0.0
+        print("\n=== E4: TEMPO POR IMAGEM (mediana de "
+              f"{len(_PER_IMAGE)} imagens) ===")
+        for k in _keys:
+            print(f"  {k:12s} {_med[k]:9.2f} ms  ({_med[k]/_med['total_ms']*100:5.1f}%)")
+        print(f"  fracao do encoder: {_frac*100:.1f}%")
+        wandb.log({f"e4/{k}": v for k, v in _med.items()})
+        wandb.log({"e4/encoder_fraction": _frac,
+                   "e4/n_images_timed": len(_PER_IMAGE)})
+        wandb.summary.update({f"e4_{k}": v for k, v in _med.items()})
+        wandb.summary["e4_encoder_fraction"] = _frac
+
     # === W&B: Log final metrics ===
     _total_time = time.time() - _start_time
     _gpu_mem_mb = torch.cuda.max_memory_allocated() / (1024**2)

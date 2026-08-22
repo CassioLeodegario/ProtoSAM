@@ -95,7 +95,8 @@ def fetch(entity, project):
     for r in runs:
         if r.state != "finished":
             continue
-        d = {"name": r.name, "group": r.group or "", "id": r.id}
+        d = {"name": r.name, "group": r.group or "", "id": r.id,
+             "created_at": str(r.created_at)}
         d.update({f"cfg.{k}": v for k, v in r.config.items()
                   if not k.startswith("_") and isinstance(v, (int, float, str, bool, type(None)))})
         d.update({f"sum.{k}": v for k, v in r.summary.items()
@@ -103,6 +104,16 @@ def fetch(entity, project):
         rows.append(d)
     df = pd.DataFrame(rows)
     print(f"{len(df)} runs concluidas em {entity}/{project}")
+
+    # Tentativas superadas continuam no projeto (ex.: as duas primeiras versões do
+    # E1b, com contabilidade errada). O nome da run codifica a identidade do
+    # experimento, então a mais recente com o mesmo nome é a que vale.
+    before = len(df)
+    df = (df.sort_values("created_at")
+            .drop_duplicates(subset=["group", "name"], keep="last")
+            .reset_index(drop=True))
+    if before != len(df):
+        print(f"  {before - len(df)} runs superadas descartadas (mesmo nome, versao antiga)")
     return df
 
 
@@ -199,36 +210,43 @@ def f3_vram(df):
         return
     encs = ["dinov2_l14", "dinov2_b14", "dinov2_s14", "vmamba_tiny"]
     sizes = [256, 384, 512, 672, 768, 1024]
-    fig, ax = plt.subplots(figsize=(7.6, 4.2))
+    fig, ax = plt.subplots(figsize=(8.0, 4.6))
     style_axes(ax, "", "VRAM (MB)", "Memória do encoder — pesos vs ativação")
-    x, labels, rows = 0, [], []
+    x, rows, ticks, groups = 0, [], [], []
     for enc in encs:
         s = sub[sub["cfg.encoder"] == enc].sort_values("cfg.input_size")
+        s = s[s["cfg.input_size"].isin(sizes)]
+        if s.empty:
+            continue
+        start = x
         for _, r in s.iterrows():
-            if r["cfg.input_size"] not in sizes:
-                continue
             w, a = float(r["cfg.vram_weights_mb"]), float(r["cfg.vram_activation_mb"])
-            # 2px de superfície entre os segmentos empilhados
-            ax.bar(x, w, color="#c3c2b7", width=0.78, zorder=3, label="_")
-            ax.bar(x, a, bottom=w + 6, color=SERIES[enc]["c"], width=0.78, zorder=3, label="_")
-            labels.append(int(r["cfg.input_size"]))
+            ax.bar(x, w, color="#c3c2b7", width=0.78, zorder=3)
+            # espaçador de superfície entre os segmentos empilhados
+            ax.bar(x, a, bottom=w + 8, color=SERIES[enc]["c"], width=0.78, zorder=3)
+            ticks.append((x, str(int(r["cfg.input_size"]))))
             rows.append({"encoder": enc, "input_size": int(r["cfg.input_size"]),
                          "vram_weights_mb": w, "vram_activation_mb": a})
             x += 1
+        groups.append(((start + x - 1) / 2, SERIES[enc]["label"]))
         x += 1
     dump(pd.DataFrame(rows), "f3_vram")
-    ax.set_xticks(range(len(labels) + len(encs) - 1))
-    ticks = []
-    i = 0
-    for enc in encs:
-        n = len([r for r in rows if r["encoder"] == enc])
-        ticks += [str(r["input_size"]) for r in rows if r["encoder"] == enc] + [""]
-    ax.set_xticks(range(len(ticks)))
-    ax.set_xticklabels(ticks, fontsize=7.5, rotation=90)
+
+    ax.set_xticks([t[0] for t in ticks])
+    ax.set_xticklabels([t[1] for t in ticks], fontsize=8, rotation=0)
+    ax.set_xlim(-1, x - 1)
+    # Identidade do grupo por texto, nunca só por cor.
+    ymin = ax.get_ylim()[0]
+    for cx, label in groups:
+        ax.annotate(label, (cx, ymin), xytext=(0, -30), textcoords="offset points",
+                    ha="center", fontsize=10, color=INK, annotation_clip=False)
+    ax.annotate("Resolução de entrada (px)", (0.5, -0.10), xycoords="axes fraction",
+                ha="center", fontsize=9, color=MUTED, annotation_clip=False)
     handles = [plt.Rectangle((0, 0), 1, 1, color="#c3c2b7"),
                *[plt.Rectangle((0, 0), 1, 1, color=SERIES[e]["c"]) for e in encs]]
-    ax.legend(handles, ["Pesos"] + [f'Ativação — {SERIES[e]["label"]}' for e in encs],
-              frameon=False, fontsize=8.5, labelcolor=INK2, ncol=2, loc="upper left")
+    ax.legend(handles, ["Pesos (constantes)"] + [f'Ativação — {SERIES[e]["label"]}' for e in encs],
+              frameon=False, fontsize=8.5, labelcolor=INK2, ncol=3,
+              loc="lower center", bbox_to_anchor=(0.5, -0.42))
     save(fig, "f3_vram_pesos_ativacao")
 
 
@@ -257,10 +275,18 @@ def f4_e4_breakdown(df):
         ax.barh(y, d[key], left=left, color=color, height=0.62, label=label, zorder=3)
         left = left + d[key].values + 3.0  # 3px de superfície entre segmentos
     for i, r in d.iterrows():
-        ax.annotate(f'{r["total_ms"]:.0f} ms', (left[i], i), xytext=(6, 0),
-                    textcoords="offset points", va="center", fontsize=9, color=INK2)
-        ax.annotate(f'encoder {r["encoder_ms"]/r["total_ms"]*100:.0f}%',
-                    (2, i), va="center", fontsize=8.5, color="#ffffff", zorder=5)
+        frac = r["encoder_ms"] / r["total_ms"]
+        # O rótulo só cabe dentro quando o segmento é largo; senão vai para fora,
+        # em tinta de texto, para não invadir os segmentos vizinhos.
+        if frac > 0.25:
+            ax.annotate(f'encoder {frac*100:.0f}%', (r["encoder_ms"] / 2, i),
+                        ha="center", va="center", fontsize=8.5, color="#ffffff", zorder=5)
+            ax.annotate(f'{r["total_ms"]:.0f} ms', (left[i], i), xytext=(6, 0),
+                        textcoords="offset points", va="center", fontsize=9, color=INK2)
+        else:
+            ax.annotate(f'{r["total_ms"]:.0f} ms  ·  encoder {frac*100:.0f}%',
+                        (left[i], i), xytext=(6, 0), textcoords="offset points",
+                        va="center", fontsize=9, color=INK2)
     ax.set_yticks(y)
     ax.set_yticklabels(ylabels, fontsize=9, color=INK2)
     ax.invert_yaxis()

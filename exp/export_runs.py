@@ -210,7 +210,7 @@ def f3_vram(df):
         return
     encs = ["dinov2_l14", "dinov2_b14", "dinov2_s14", "vmamba_tiny"]
     sizes = [256, 384, 512, 672, 768, 1024]
-    fig, ax = plt.subplots(figsize=(8.0, 4.6))
+    fig, ax = plt.subplots(figsize=(9.6, 4.6))
     style_axes(ax, "", "VRAM (MB)", "Memória do encoder — pesos vs ativação")
     x, rows, ticks, groups = 0, [], [], []
     for enc in encs:
@@ -233,14 +233,15 @@ def f3_vram(df):
     dump(pd.DataFrame(rows), "f3_vram")
 
     ax.set_xticks([t[0] for t in ticks])
-    ax.set_xticklabels([t[1] for t in ticks], fontsize=8, rotation=0)
+    ax.set_xticklabels([t[1] for t in ticks], fontsize=7.5, rotation=0)
     ax.set_xlim(-1, x - 1)
-    # Identidade do grupo por texto, nunca só por cor.
+    # Identidade do grupo por texto, nunca só por cor. O rótulo do eixo fica
+    # abaixo dos nomes dos grupos para não colidir com eles.
     ymin = ax.get_ylim()[0]
     for cx, label in groups:
-        ax.annotate(label, (cx, ymin), xytext=(0, -30), textcoords="offset points",
+        ax.annotate(label, (cx, ymin), xytext=(0, -32), textcoords="offset points",
                     ha="center", fontsize=10, color=INK, annotation_clip=False)
-    ax.annotate("Resolução de entrada (px)", (0.5, -0.10), xycoords="axes fraction",
+    ax.annotate("Resolução de entrada (px)", (0.5, -0.185), xycoords="axes fraction",
                 ha="center", fontsize=9, color=MUTED, annotation_clip=False)
     handles = [plt.Rectangle((0, 0), 1, 1, color="#c3c2b7"),
                *[plt.Rectangle((0, 0), 1, 1, color=SERIES[e]["c"]) for e in encs]]

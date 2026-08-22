@@ -95,19 +95,23 @@ def to_display(img):
     """
     Tensor do dataset -> RGB em [0,1], com a cor FIEL.
 
-    Com sam_trans a media e o desvio do dataset viram 0 e 1, entao o tensor ja
-    esta em escala 0-255: basta dividir. Normalizar por min-max reequilibraria
-    os canais e deixaria o tecido azulado em vez de rosado.
+    Medido, nao adivinhado: os minimos por canal do tensor sao -2.118/-2.036/
+    -1.804, que sao exatamente (0 - media)/desvio das estatisticas do ImageNet.
+    A normalizacao esta em PolypTransforms.py:513, aplicada sobre 0-255, e o
+    cv2_loader ja converte BGR->RGB. Logo a inversao e exata:
+        x = t * desvio + media
+    Normalizar por min-max reequilibraria os canais e deixaria o tecido azulado.
     """
-    a = np.asarray(img)
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float64)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float64)
+    a = np.asarray(img, dtype=np.float64)
     if a.ndim == 3 and a.shape[0] in (1, 3):
         a = a.transpose(1, 2, 0)
+    if a.ndim == 3 and a.shape[2] == 3:
+        return np.clip(a * std + mean, 0.0, 1.0)
     if a.ndim == 3 and a.shape[2] == 1:
         a = a[:, :, 0]
-    a = a.astype(np.float64)
-    if a.max() > 1.5:
-        return np.clip(a / 255.0, 0.0, 1.0)
-    return np.clip(a, 0.0, 1.0)
+    return np.clip((a - a.min()) / (a.max() - a.min() + 1e-8), 0.0, 1.0)
 
 
 def show(ax, base, mask=None, color=None, title=None, sub=None):

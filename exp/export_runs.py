@@ -336,7 +336,10 @@ def f5_token_parity(df):
     ax.set_xticks(x)
     ax.set_xticklabels([f'{r.tokens}²\n({r.dinov2_input} vs {r.vmamba_input} px)'
                         for r in d.itertuples()], fontsize=9)
-    ax.legend(frameon=False, fontsize=9, labelcolor=INK2, loc="upper left")
+    # Legenda abaixo: no topo ela colidia com os rótulos diretos das barras.
+    ax.set_ylim(0, max(d["vmamba_dice"].max(), d["dinov2_dice"].max()) * 1.28)
+    ax.legend(frameon=False, fontsize=9, labelcolor=INK2, ncol=2,
+              loc="lower center", bbox_to_anchor=(0.5, -0.34))
     save(fig, "f5_paridade_tokens")
 
 

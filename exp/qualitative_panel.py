@@ -26,6 +26,7 @@ import sys
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import cv2
 import numpy as np
 import torch
 from matplotlib.colors import ListedColormap
@@ -91,31 +92,25 @@ def dice_of(pred, gt):
     return float(2 * (p * g).sum() / (p.sum() + g.sum() + 1e-8))
 
 
-def to_display(img):
+def to_display(path, side=1024):
     """
-    Tensor do dataset -> RGB em [0,1], com a cor FIEL.
+    Imagem para EXIBICAO, lida do arquivo original — nao do tensor.
 
-    Medido, nao adivinhado: os minimos por canal do tensor sao -2.118/-2.036/
-    -1.804, que sao exatamente (0 - media)/desvio das estatisticas do ImageNet.
-    A normalizacao esta em PolypTransforms.py:513, aplicada sobre 0-255, e o
-    cv2_loader ja converte BGR->RGB. Logo a inversao e exata:
-        x = t * desvio + media
-    Normalizar por min-max reequilibraria os canais e deixaria o tecido azulado.
+    Inverter a normalizacao do tensor se mostrou pouco confiavel (a cadeia de
+    transformacoes troca a ordem dos canais em algum ponto, e as tentativas de
+    desfazer isso produziram tecido ciano e depois amarelo). Ler o PNG e
+    reproduzir a MESMA geometria do pipeline — redimensionar o lado maior para
+    1024 e preencher embaixo/direita — da a cor certa por construcao e mantem
+    as mascaras alinhadas, que e tudo o que a figura precisa.
     """
-    mean = np.array([0.485, 0.456, 0.406], dtype=np.float64)
-    std = np.array([0.229, 0.224, 0.225], dtype=np.float64)
-    a = np.asarray(img, dtype=np.float64)
-    if a.ndim == 3 and a.shape[0] in (1, 3):
-        a = a.transpose(1, 2, 0)
-    if a.ndim == 3 and a.shape[2] == 3:
-        # O tensor chega em BGR (medido: as medias por canal seguem o arquivo
-        # original em BGR, nao em RGB), apesar do BGR2RGB no cv2_loader. Para
-        # EXIBIR corretamente, inverte-se a ordem. Ver D8 no caderno: o modelo
-        # recebe BGR normalizado com estatisticas de RGB.
-        return np.clip(a * std + mean, 0.0, 1.0)[:, :, ::-1]
-    if a.ndim == 3 and a.shape[2] == 1:
-        a = a[:, :, 0]
-    return np.clip((a - a.min()) / (a.max() - a.min() + 1e-8), 0.0, 1.0)
+    bgr = cv2.imread(path, cv2.IMREAD_COLOR)
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB).astype(np.float64) / 255.0
+    h, w = rgb.shape[:2]
+    s = side / float(max(h, w))
+    nh, nw = int(round(h * s)), int(round(w * s))
+    out = np.zeros((side, side, 3), dtype=np.float64)
+    out[:nh, :nw] = cv2.resize(rgb, (nw, nh), interpolation=cv2.INTER_LINEAR)
+    return np.clip(out, 0.0, 1.0)
 
 
 def show(ax, base, mask=None, color=None, title=None, sub=None):
@@ -233,11 +228,12 @@ def main():
             for enc in ("dinov2_l14", "vmamba_tiny"):
                 per_sample[i][(enc, size)] = r[(i, enc)]
 
-    supp_disp = to_display(supp_imgs[0][0] if supp_imgs[0].ndim == 4 else supp_imgs[0])
+    supp_path = getattr(tr, "last_support_paths", [None])[0]
+    supp_disp = to_display(supp_path)
     supp_mask = np.asarray(supp_msks[0]).squeeze()
     for i in chosen:
-        idx, case, img, gt = samples[i]
-        p = panel((idx, case, to_display(img[0]), gt), (supp_disp, supp_mask),
+        idx, case, _img, gt = samples[i]
+        p = panel((idx, case, to_display(te.images[i]), gt), (supp_disp, supp_mask),
                   per_sample[i], a.sizes, out_dir)
         print(f"  -> {p}")
 

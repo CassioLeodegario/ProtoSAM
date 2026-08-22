@@ -254,6 +254,22 @@ def get_model(_config) -> ProtoSAM:
     return model
 
 
+# === D8: ordem dos canais =====================================================
+# Medido: o tensor que chega ao modelo tem R e B trocados em relacao ao arquivo
+# original (o tecido aparece ciano em vez de rosado ao desnormalizar). Os
+# encoders pre-treinados esperam RGB. Inerte a menos que PROTOSAM_SWAP_RGB=1.
+SWAP_RGB = os.environ.get("PROTOSAM_SWAP_RGB") == "1"
+
+
+def _swap_channels(x):
+    """Inverte a ordem dos canais de um tensor (..., 3, H, W)."""
+    if torch.is_tensor(x) and x.dim() >= 3 and x.shape[-3] == 3:
+        return x.flip(-3)
+    if isinstance(x, (list, tuple)):
+        return type(x)(_swap_channels(e) for e in x)
+    return x
+
+
 # === E4: decomposição do tempo por imagem =====================================
 # Inerte a menos que PROTOSAM_TIMING=1. Instrumenta de FORA, sem alterar
 # ProtoSAM.py nem grid_proto_fewshot.py: envolve get_features (encoder), o wrapper
@@ -405,6 +421,7 @@ def main(_run, _config, _log):
             "is_distilled": _is_distilled,
             "checkpoint": _ckpt,
             "encoder_eval_mode": os.environ.get("PROTOSAM_ENCODER_EVAL", "1") == "1",
+            "swap_rgb": SWAP_RGB,
             "dtype": "fp32",
             "batch_size": 1,
         },
@@ -501,6 +518,10 @@ def main(_run, _config, _log):
         support_images, support_fg_mask, case = get_support_set_coco(_config, tr_dataset)
         _log.info(f'COCO support set: category="{case}", n={len(support_images)}')
 
+    if SWAP_RGB and support_images is not None:
+        support_images = _swap_channels(support_images)
+        _log.info('[D8] canais do suporte e da consulta invertidos (BGR -> RGB)')
+
     # Qual imagem serviu de suporte fica gravado na run, não só no log.
     _supp_files = getattr(tr_dataset, "last_support_paths", None)
     if _supp_files:
@@ -524,6 +545,8 @@ def main(_run, _config, _log):
                 continue
              
             query_images = sample_batched['image'].cuda()
+            if SWAP_RGB:
+                query_images = _swap_channels(query_images)
             query_labels = torch.cat([sample_batched['label']], dim=0)
             if not 1 in query_labels and _config["skip_no_organ_slices"]:
                 continue

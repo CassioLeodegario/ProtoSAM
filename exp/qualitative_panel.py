@@ -108,7 +108,11 @@ def to_display(img):
     if a.ndim == 3 and a.shape[0] in (1, 3):
         a = a.transpose(1, 2, 0)
     if a.ndim == 3 and a.shape[2] == 3:
-        return np.clip(a * std + mean, 0.0, 1.0)
+        # O tensor chega em BGR (medido: as medias por canal seguem o arquivo
+        # original em BGR, nao em RGB), apesar do BGR2RGB no cv2_loader. Para
+        # EXIBIR corretamente, inverte-se a ordem. Ver D8 no caderno: o modelo
+        # recebe BGR normalizado com estatisticas de RGB.
+        return np.clip(a * std + mean, 0.0, 1.0)[:, :, ::-1]
     if a.ndim == 3 and a.shape[2] == 1:
         a = a[:, :, 0]
     return np.clip((a - a.min()) / (a.max() - a.min() + 1e-8), 0.0, 1.0)

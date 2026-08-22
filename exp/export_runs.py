@@ -195,10 +195,12 @@ def f2_latency(df):
     if not sam.empty:
         y = float(sam["cfg.latency_ms_median"].iloc[0])
         ax.axhline(y, color=MUTED, linestyle=":", linewidth=1.2, zorder=1)
-        ax.annotate(f"SAM-H (encoder) @1024: {y:.0f} ms", (260, y),
-                    textcoords="offset points", xytext=(0, 5), fontsize=8.5, color=MUTED)
+        # Na ponta direita da linha: à esquerda ela colidia com a legenda.
+        ax.annotate(f"SAM-H (encoder) @1024: {y:.0f} ms", (1024, y), ha="right",
+                    textcoords="offset points", xytext=(0, 6), fontsize=8.5, color=MUTED)
     ax.set_xticks([256, 384, 512, 672, 768, 1024])
-    ax.legend(frameon=False, fontsize=9, labelcolor=INK2, loc="upper left")
+    ax.legend(frameon=False, fontsize=9, labelcolor=INK2, loc="upper left",
+              bbox_to_anchor=(0.0, 0.92))
     save(fig, "f2_latencia_encoder")
 
 

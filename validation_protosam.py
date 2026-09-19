@@ -667,6 +667,10 @@ def main(_run, _config, _log):
     # === W&B: Log final metrics ===
     _total_time = time.time() - _start_time
     _gpu_mem_mb = torch.cuda.max_memory_allocated() / (1024**2)
+    print(f"[custo] tempo_total_s={_total_time:.2f} "
+          f"vram_pico_mb={_gpu_mem_mb:.1f} "
+          f"n_imagens={len(mean_dice)} "
+          f"ms_por_imagem={_total_time*1000.0/max(1,len(mean_dice)):.2f}")
     wandb.log({
         "mean_dice": m_meanDice,
         "mean_iou": m_meanIOU,

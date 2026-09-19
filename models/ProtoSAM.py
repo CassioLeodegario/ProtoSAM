@@ -1,3 +1,4 @@
+import os
 import warnings
 import torch
 import torch.nn as nn
@@ -188,7 +189,19 @@ class ProtoSAM(nn.Module):
             image_size = (image_size, image_size)
         self.image_size = image_size
         self.coarse_segmentation_model = coarse_segmentation_model
-        self.get_sam(sam_pretrained_path, use_sam_trans)
+        self.coarse_pred_only = coarse_pred_only
+        # Ablacao sem SAM: quando a saida final e a mascara do ALP, carregar os
+        # 2,5 GB do SAM-H so contamina a medicao de custo. Opt-in via
+        # PROTOSAM_SKIP_SAM=1; inerte por padrao. Seguro porque self.sam,
+        # self.predictor e self.sam_trans so sao usados DEPOIS do retorno
+        # antecipado do ramo coarse_pred_only no forward.
+        if coarse_pred_only and os.environ.get("PROTOSAM_SKIP_SAM") == "1":
+            self.sam = None
+            self.predictor = None
+            self.sam_trans = None
+            print("[ablacao] SAM NAO carregado (PROTOSAM_SKIP_SAM=1)")
+        else:
+            self.get_sam(sam_pretrained_path, use_sam_trans)
         self.num_points_for_sam = num_points_for_sam
         self.use_points = use_points
         self.use_bbox = use_bbox # if False then uses points

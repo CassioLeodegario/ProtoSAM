@@ -88,3 +88,10 @@ python scripts/avaliar.py --treino runs/<pasta> --passos 2000
 
 A etapa A deve bater com o 0,625 quase exatamente. Na B, diferenças de alguns milésimos são
 esperadas (GPU, driver e torch 2.7 em vez de 2.0).
+
+**Já verificado em CPU** (`migracao/verificar_dados_256.py`): com Pillow 10.4.0 e scikit-image 0.24.0,
+o cache gerado pelo protovm é idêntico ao de out/2026 em todas as 1449 imagens (rgb, superpixels,
+área útil, candidatos), e os planos de validação, piloto (200) e treino (5000) também.
+O cache 512 com superpixels a 256 gera exatamente o mesmo plano.
+Com Pillow 13 duas imagens mudam 1 nível de cor no redimensionamento, o que altera o plano a partir
+do episódio 79: **mantenha `pillow==10.4.0`** (já fixado no requirements.txt).

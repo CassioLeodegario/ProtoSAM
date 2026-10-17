@@ -10,6 +10,7 @@ Parâmetros novos:
                     Mantém as mesmas regiões e o mesmo plano em qualquer resolução.
 """
 from pathlib import Path
+import importlib.metadata
 import json
 import os
 
@@ -95,9 +96,14 @@ def preparar(destino, resolucao=256, superpixels_em=None):
     superpixels_em = superpixels_em or resolucao
     destino = Path(destino)
     destino.mkdir(parents=True, exist_ok=True)
+    # O redimensionamento do Pillow muda entre versões (10.4 -> 13 altera 2 imagens em 1 nível
+    # de cor, o que muda os superpixels de uma delas e desloca o plano). Fica registrado aqui.
+    versoes = {p: importlib.metadata.version(p) for p in ('Pillow', 'scikit-image', 'numpy', 'scipy')}
     config = dict(FILTROS, versao=2, resolucao=[resolucao, resolucao],
                   superpixels_em=[superpixels_em, superpixels_em],
-                  protocolo_sha256=sha256(protocolo.ARQUIVO))
+                  protocolo_sha256=sha256(protocolo.ARQUIVO), versoes=versoes)
+    if versoes['Pillow'] != '10.4.0':
+        print(f"AVISO: Pillow {versoes['Pillow']}; os dados de out/2026 usaram 10.4.0 (requirements.txt).", flush=True)
     divisao = _divisao()
     if (destino / 'config.json').exists():
         assert ler_json(destino / 'config.json') == config, 'Configuração de dados mudou neste destino.'

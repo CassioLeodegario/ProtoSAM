@@ -1,0 +1,8 @@
+# EFT a 512 px. Superpixels calculados a 256 e ampliados (mesmas regiões e mesmo plano
+# do tiny_256), então a única variável é a resolução. Gerar o cache antes:
+#   python scripts/preparar_dados.py --resolucao 512 --superpixels-em 256
+base: _base.yaml
+resolucao: 512
+dados: dados_eft/r512_sp256
+passos: 5000
+checkpoints: [1000, 1500, 2000, 3000, 4000, 5000]

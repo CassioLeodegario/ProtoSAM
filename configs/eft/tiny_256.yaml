@@ -1,0 +1,5 @@
+# Reprodução do melhor VMamba de out/2026 (registro R0027: V, S00, ALP 0,538 / SAM 0,625 no passo 2000).
+# Serve para validar a migração: rodar e conferir se o passo 2000 dá o mesmo resultado.
+base: _base.yaml
+passos: 5000
+checkpoints: [1000, 1500, 2000, 3000, 4000, 5000]

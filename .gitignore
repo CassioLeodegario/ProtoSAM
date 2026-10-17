@@ -4,3 +4,11 @@ exps/
 debug/
 test_*/
 pretrained_model/*
+# protovm: saídas e dados locais (não versionar)
+runs/
+dados_eft/
+data/PolypDataset
+pretrained_model
+.ipynb_checkpoints/
+*.pt
+*.pth

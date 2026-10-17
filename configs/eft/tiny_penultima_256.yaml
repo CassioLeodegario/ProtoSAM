@@ -1,0 +1,6 @@
+# Reprodução do EFT no penúltimo estágio com LayerNorm unitária (registros R0036-R0041).
+base: _base.yaml
+estagio: 2
+norm: ln_unitaria
+passos: 5000
+checkpoints: [1000, 1500, 2000, 3000, 4000, 5000]

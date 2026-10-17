@@ -1,0 +1,16 @@
+# Valores comuns a todo treino EFT-SP (os mesmos de out/2026).
+# Cada config de experimento herda daqui com `base: _base.yaml` e muda só o que precisa.
+modelo: vmamba_tiny
+estagio: 3            # 2 = penúltimo, 3 = último
+norm: checkpoint      # checkpoint | sem_norm | ln_unitaria
+resolucao: 256        # lado da imagem no encoder durante o treino
+grade: 32             # mapa de features entregue ao ALP (kernel 4x4 com proto_grid 8)
+dados: dados_eft/r256 # cache gerado por scripts/preparar_dados.py
+passos: 2000
+lr: 1.0e-5
+weight_decay: 0.0
+semente: 1234
+salvar_a_cada: 50
+validar_a_cada: 250   # validação em pseudo-máscaras (não é Dice de pólipo)
+checkpoints: [500, 1000, 1500, 2000]
+inicializar_de: null  # null = pesos pré-treinados do ImageNet

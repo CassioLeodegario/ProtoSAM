@@ -1,0 +1,6 @@
+Sintaxe Python e células: OK
+Módulos de dados/modelo/piloto idênticos ao pacote anterior: OK
+Plano sintético: primeiros 200 idênticos; 1304 imagens antes de repetir; sem sobreposição de validação: OK
+Índices de retomada 200/250/500/1000/1950/2000: OK
+Rejeição de prefixo inconsistente: OK
+Treinamento CUDA e leitura dos checkpoints reais: pendentes de execução no Runpod.

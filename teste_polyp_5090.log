@@ -1,0 +1,26 @@
+===================================
+dinov2_l14_polyp_cca_grid_8_res_672_polyps_fold_0 on GPU 0
+test_vfold0
+WARNING - root - Changed type of config entry "save_snapshot_every" from int to str
+WARNING - root - Changed type of config entry "min_fg_data" from str to int
+INFO - mySSL - Running command 'main'
+INFO - mySSL - Started run with ID "1"
+INFO - main - ###### Reload model None ######
+Using cache found in ./pretrained_model/hub/facebookresearch_dinov2_main
+/home/1542521/cassio_pereira/ProtoSAM-repro/./pretrained_model/hub/facebookresearch_dinov2_main/dinov2/layers/swiglu_ffn.py:51: UserWarning: xFormers is not available (SwiGLU)
+  warnings.warn("xFormers is not available (SwiGLU)")
+/home/1542521/cassio_pereira/ProtoSAM-repro/./pretrained_model/hub/facebookresearch_dinov2_main/dinov2/layers/attention.py:33: UserWarning: xFormers is not available (Attention)
+  warnings.warn("xFormers is not available (Attention)")
+/home/1542521/cassio_pereira/ProtoSAM-repro/./pretrained_model/hub/facebookresearch_dinov2_main/dinov2/layers/block.py:40: UserWarning: xFormers is not available (Block)
+  warnings.warn("xFormers is not available (Block)")
+INFO - dinov2 - using MLP layer as FFN
+ERROR - mySSL - Failed after 0:00:06!
+Traceback (most recent calls WITHOUT Sacred internals):
+  File "/home/1542521/cassio_pereira/ProtoSAM-repro/validation_protosam.py", line 312, in main
+    raise NotImplementedError(
+NotImplementedError: dataset polyps_672 not implemented
+
+####### created dir:test_polyp/dinov2_l14_polyp_cca_grid_8_res_672_polyps_fold_0/mySSL_test_vfold0_polyps_672_sets_0_1shot/1 #######
+config do_cca: False, use_bbox: True
+MultiProtoAsConv: kernel_size: [6, 6]
+cls unit feature hw: [48, 48]

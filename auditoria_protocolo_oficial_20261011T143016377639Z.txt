@@ -1,0 +1,2892 @@
+COMMIT OFICIAL: 64868c909668aac9ad517f7192a2712e88268e8f
+
+ARQUIVOS DO COMMIT:
+.gitignore
+LICENSE
+README.md
+backbone.sh
+config_ssl_upload.py
+data/data_processing.ipynb
+dataloaders/GenericSuperDatasetv2.py
+dataloaders/ManualAnnoDatasetv2.py
+dataloaders/PolypDataset.py
+dataloaders/PolypTransforms.py
+dataloaders/SimpleDataset.py
+dataloaders/__init__.py
+dataloaders/augutils.py
+dataloaders/common.py
+dataloaders/dataset_utils.py
+dataloaders/dev_customized_med.py
+dataloaders/image_transforms.py
+dataloaders/niftiio.py
+models/ProtoMedSAM.py
+models/ProtoSAM.py
+models/SamWrapper.py
+models/__init__.py
+models/alpmodule.py
+models/backbone/__init__.py
+models/backbone/torchvision_backbones.py
+models/grid_proto_fewshot.py
+models/segment_anything/__init__.py
+models/segment_anything/automatic_mask_generator.py
+models/segment_anything/build_sam.py
+models/segment_anything/modeling/__init__.py
+models/segment_anything/modeling/common.py
+models/segment_anything/modeling/image_encoder.py
+models/segment_anything/modeling/mask_decoder.py
+models/segment_anything/modeling/prompt_encoder.py
+models/segment_anything/modeling/sam.py
+models/segment_anything/modeling/transformer.py
+models/segment_anything/predictor.py
+models/segment_anything/utils/__init__.py
+models/segment_anything/utils/amg.py
+models/segment_anything/utils/onnx.py
+models/segment_anything/utils/transforms.py
+requirements.txt
+run_protosam.sh
+training.py
+util/__init__.py
+util/consts.py
+util/lora.py
+util/metric.py
+util/utils.py
+validation.py
+validation_protosam.py
+
+======================================================================
+ARQUIVO OFICIAL: README.md
+======================================================================
+# ProtoSAM - One shot segmentation with foundational models
+
+Link to our paper [here](https://arxiv.org/abs/2407.07042). \
+This work is the successor of [DINOv2-based-Self-Supervised-Learning](https://github.com/levayz/DINOv2-based-Self-Supervised-Learning) (Link to [Paper](arxiv.org/abs/2403.03273)).
+
+## Abstract
+This work introduces a new framework, ProtoSAM, for one-shot image segmentation. It combines DINOv2, a vision transformer that extracts features from images, with an Adaptive Local Prototype Pooling (ALP) layer, which generates prototypes from a support image and its mask. These prototypes are used to create an initial coarse segmentation mask by comparing the query image's features with the prototypes.
+Following the extraction of an initial mask, we use numerical methods to generate prompts, such as points and bounding boxes, which are then input into the Segment Anything Model (SAM), a prompt-based segmentation model trained on natural images. This allows segmenting new classes automatically and effectively without the need for additional training. 
+
+## How To Run
+### 1. Data preprocessing
+#### 1.1 CT and MRI Dataset
+Please see the notebook `data/data_processing.ipynb` for instructions.
+For convenience i've compiled the data processing instructions from https://github.com/cheng-01037/Self-supervised-Fewshot-Medical-Image-Segmentation to a single notebook.  \
+The CT dataset is available here: https://www.synapse.org/Synapse:syn3553734 \
+The MRI dataset is availabel here: https://chaos.grand-challenge.org
+
+run `./data/CHAOST2/dcm_img_to_nii.sh` to convert dicom images to nifti files.
+
+#### 1.2 Polyp Dataset
+Data is available here: https://www.kaggle.com/datasets/hngphmv/polypdataset?select=train.csv
+
+Put the dataset `data/PolypDataset/`
+
+### 2. Running
+#### 2.1 (Optional) Training and Validation of the coarse segmentation networks
+```
+./backbone.sh [MODE] [MODALITY] [LABEL_SET]
+```
+MODE - validation or training \
+MODALITY - ct or mri \
+LABEL_SET - 0 (kidneys), 1 (liver spleen)
+
+for example:
+```
+./backbone.sh training mri 1
+```
+Please refer to `backbone.sh` for further configurations.
+
+#### 2.1 Running ProtoSAM
+Put all SAM checkpoint like sam_vit_b.pth, sam_vit_h.pth, medsam_vit_b.pth into the `pretrained_model` directory. \
+Checkpoints are available at [SAM](https://github.com/facebookresearch/segment-anything) and [MedSAM](https://github.com/bowang-lab/MedSAM).
+
+```
+./run_protosam.sh [MODALITY] [LABEL_SET]
+```
+MODALITY - ct, mri or polyp \
+LABEL_SET (only relevant if doing ct or mri) - 0 (kidneys), 1 (liver spleen) 
+Please refer to the `run_protosam.sh` script for further configurations.
+
+
+## Acknowledgements
+This work is largely based on [ALPNet](https://github.com/cheng-01037/Self-supervised-Fewshot-Medical-Image-Segmentation), [DINOv2](https://github.com/facebookresearch/dinov2), [SAM](https://github.com/facebookresearch/segment-anything) and is a continuation of [DINOv2-based-Self-Supervised-Learning](https://github.com/levayz/DINOv2-based-Self-Supervised-Learning).
+
+## Cite
+If you found this repo useful, please consider giving us a citation and a star!
+
+```bibtex
+@article{ayzenberg2024protosam,
+  title={ProtoSAM-One Shot Medical Image Segmentation With Foundational Models},
+  author={Ayzenberg, Lev and Giryes, Raja and Greenspan, Hayit},
+  journal={arXiv preprint arXiv:2407.07042},
+  year={2024}
+}
+
+@misc{ayzenberg2024dinov2,
+      title={DINOv2 based Self Supervised Learning For Few Shot Medical Image Segmentation}, 
+      author={Lev Ayzenberg and Raja Giryes and Hayit Greenspan},
+      year={2024},
+      eprint={2403.03273},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
+}
+
+======================================================================
+ARQUIVO OFICIAL: config_ssl_upload.py
+======================================================================
+"""
+Experiment configuration file
+Extended from config file from original PANet Repository
+"""
+import os
+import re
+import glob
+import itertools
+
+import sacred
+from sacred import Experiment
+from sacred.observers import FileStorageObserver
+from sacred.utils import apply_backspaces_and_linefeeds
+
+from platform import node
+from datetime import datetime
+
+from util.consts import IMG_SIZE
+
+sacred.SETTINGS['CONFIG']['READ_ONLY_CONFIG'] = False
+sacred.SETTINGS.CAPTURE_MODE = 'no'
+
+ex = Experiment('mySSL')
+ex.captured_out_filter = apply_backspaces_and_linefeeds
+
+source_folders = ['.', './dataloaders', './models', './util']
+sources_to_save = list(itertools.chain.from_iterable(
+    [glob.glob(f'{folder}/*.py') for folder in source_folders]))
+for source_file in sources_to_save:
+    ex.add_source_file(source_file)
+
+@ex.config
+def cfg():
+    """Default configurations"""
+    seed = 1234
+    gpu_id = 0
+    mode = 'train' # for now only allows 'train' 
+    do_validation=False
+    num_workers = 4 # 0 for debugging. 
+
+    dataset = 'CHAOST2_Superpix' # i.e. abdominal MRI
+    use_coco_init = True # initialize backbone with MS_COCO initialization. Anyway coco does not contain medical images
+
+    ### Training
+    n_steps = 100100
+    batch_size = 1
+    lr_milestones = [ (ii + 1) * 1000 for ii in range(n_steps // 1000 - 1)]
+    lr_step_gamma = 0.95
+    ignore_label = 255
+    print_interval = 100
+    save_snapshot_every = 25000
+    max_iters_per_load = 1000 # epoch size, interval for reloading the dataset
+    epochs=1
+    scan_per_load = -1 # numbers of 3d scans per load for saving memory. If -1, load the entire dataset to the memory
+    which_aug = 'sabs_aug' # standard data augmentation with intensity and geometric transforms
+    input_size = (IMG_SIZE, IMG_SIZE)
+    min_fg_data='100' # when training with manual annotations, indicating number of foreground pixels in a single class single slice. This empirically stablizes the training process
+    label_sets = 0 # which group of labels taking as training (the rest are for testing)
+    curr_cls = "" # choose between rk, lk, spleen and liver
+    exclude_cls_list = [2, 3] # testing classes to be excluded in training. Set to [] if testing under setting 1
+    usealign = True # see vanilla PANet
+    use_wce = True
+    use_dinov2_loss = False
+    dice_loss = False
+    ### Validation
+    z_margin = 0 
+    eval_fold = 0 # which fold for 5 fold cross validation
+    support_idx=[-1] # indicating which scan is used as support in testing. 
+    val_wsize=2 # L_H, L_W in testing
+    n_sup_part = 3 # number of chuncks in testing
+    use_clahe = False
+    use_slice_adapter = False
+    adapter_layers=3
+    debug=False
+    skip_no_organ_slices=True
+    # Network
+    modelname = 'dlfcn_res101' # resnet 101 backbone from torchvision fcn-deeplab
+    clsname = None # 
+    reload_model_path = None # path for reloading a trained model (overrides ms-coco initialization)
+    proto_grid_size = 8 # L_H, L_W = (32, 32) / 8 = (4, 4)  in training
+    feature_hw = [input_size[0]//8, input_size[0]//8] # feature map size, should couple this with backbone in future
+    lora = 0
+    use_3_slices=False
+    do_cca=False
+    use_edge_detector=False
+    finetune_on_support=False
+    sliding_window_confidence_segmentation=False
+    finetune_model_on_single_slice=False
+    online_finetuning=True
+
+    use_bbox=True # for SAM
+    use_points=True # for SAM
+    use_mask=False # for SAM
+    base_model="alpnet" # or "SAM"
+    # SSL
+    superpix_scale = 'MIDDLE' #MIDDLE/ LARGE
+    use_pos_enc=False
+    support_txt_file = None # path to a txt file containing support slices
+    augment_support_set=False
+    coarse_pred_only=False # for ProtoSAM 
+    point_mode="both" # for ProtoSAM, choose: both, conf, centroid
+    use_neg_points=False
+    n_support=1 # num support images
+    protosam_sam_ver="sam_h" # or medsam
+    grad_accumulation_steps=1
+    ttt=False
+    reset_after_slice=True # for TTT, if to reset the model after finetuning on each slice
+    model = {
+        'align': usealign,
+        'dinov2_loss': use_dinov2_loss,
+        'use_coco_init': use_coco_init,
+        'which_model': modelname,
+        'cls_name': clsname,
+        'proto_grid_size' : proto_grid_size,
+        'feature_hw': feature_hw,
+        'reload_model_path': reload_model_path,
+        'lora': lora,
+        'use_slice_adapter': use_slice_adapter,
+        'adapter_layers': adapter_layers,
+        'debug': debug,
+        'use_pos_enc': use_pos_enc
+    }
+
+    task = {
+        'n_ways': 1,
+        'n_shots': 1,
+        'n_queries': 1,
+        'npart': n_sup_part 
+    }
+
+    optim_type = 'sgd'
+    lr=1e-3
+    momentum=0.9
+    weight_decay=0.0005
+    optim = {
+        'lr': lr, 
+        'momentum': momentum,
+        'weight_decay': weight_decay
+    }
+
+    exp_prefix = ''
+
+    exp_str = '_'.join(
+        [exp_prefix]
+        + [dataset,]
+        + [f'sets_{label_sets}_{task["n_shots"]}shot'])
+
+    path = {
+        'log_dir': './runs',
+        'SABS':{'data_dir': "./data/SABS/sabs_CT_normalized"
+            },
+        'SABS_448':{'data_dir': "./data/SABS/sabs_CT_normalized_448"
+            },
+        'SABS_672':{'data_dir': "./data/SABS/sabs_CT_normalized_672"
+            },
+        'C0':{'data_dir': "feed your dataset path here"
+            },
+        'CHAOST2':{'data_dir': "./data/CHAOST2/chaos_MR_T2_normalized/"
+            },
+        'CHAOST2_672':{'data_dir': "./data/CHAOST2/chaos_MR_T2_normalized_672/"
+            },
+        'SABS_Superpix':{'data_dir': "./data/SABS/sabs_CT_normalized"},
+        'C0_Superpix':{'data_dir': "feed your dataset path here"},
+        'CHAOST2_Superpix':{'data_dir': "./data/CHAOST2/chaos_MR_T2_normalized/"},
+        'CHAOST2_Superpix_672':{'data_dir': "./data/CHAOST2/chaos_MR_T2_normalized_672/"},
+        'SABS_Superpix_448':{'data_dir': "./data/SABS/sabs_CT_normalized_448"},
+        'SABS_Superpix_672':{'data_dir': "./data/SABS/sabs_CT_normalized_672"},
+        }
+
+
+@ex.config_hook
+def add_observer(config, command_name, logger):
+    """A hook fucntion to add observer"""
+    exp_name = f'{ex.path}_{config["exp_str"]}'
+    observer = FileStorageObserver.create(os.path.join(config['path']['log_dir'], exp_name))
+    ex.observers.append(observer)
+    return config
+
+======================================================================
+ARQUIVO OFICIAL: dataloaders/PolypDataset.py
+======================================================================
+"""
+Copied from https://github.com/talshaharabany/AutoSAM
+"""
+
+import os
+from PIL import Image
+import torch.utils.data as data
+import torchvision.transforms as transforms
+import numpy as np
+import random
+import torch
+from dataloaders.PolypTransforms import get_polyp_transform
+import cv2
+KVASIR = "Kvasir"
+CLINIC_DB = "CVC-ClinicDB"
+COLON_DB = "CVC-ColonDB"
+ETIS_DB = "ETIS-LaribPolypDB"
+CVC300 = "CVC-300"
+
+DATASETS = (KVASIR, CLINIC_DB, COLON_DB, ETIS_DB)
+EXCLUDE_DS = (CVC300, )
+
+
+def create_suppport_set_for_polyps(n_support=10):
+    """
+    create a text file contating n_support_images for each dataset
+    """
+    root_dir = "/disk4/Lev/Projects/Self-supervised-Fewshot-Medical-Image-Segmentation/data/PolypDataset/TrainDataset"
+    supp_images = []
+    supp_masks = []
+    
+    image_dir = os.path.join(root_dir, "images")
+    mask_dir = os.path.join(root_dir, "masks")
+        # randonly sample n_support images and masks
+    image_paths = sorted([os.path.join(image_dir, f) for f in os.listdir(
+        image_dir) if f.endswith('.jpg') or f.endswith('.png')])
+    mask_paths = sorted([os.path.join(mask_dir, f) for f in os.listdir(
+        mask_dir) if f.endswith('.png')])
+        
+    while len(supp_images) < n_support:
+        index = random.randint(0, len(image_paths) - 1)
+        # check that the index is not already in the support set
+        if image_paths[index] in supp_images:
+            continue
+        supp_images.append(image_paths[index])
+        supp_masks.append(mask_paths[index])
+                
+    with open(os.path.join(root_dir, "support.txt"), 'w') as file:
+        for image_path, mask_path in zip(supp_images, supp_masks):
+            file.write(f"{image_path} {mask_path}\n")
+
+def create_train_val_test_split_for_polyps():
+    root_dir = "/disk4/Lev/Projects/Self-supervised-Fewshot-Medical-Image-Segmentation/data/PolypDataset/"
+    # for each subdir in root_dir, create a split file
+    num_train_images_per_dataset = {
+        "CVC-ClinicDB": 548, "Kvasir": 900, "CVC-300": 0, "CVC-ColonDB": 0}
+
+    num_test_images_per_dataset = {
+        "CVC-ClinicDB": 64, "Kvasir": 100, "CVC-300": 60, "CVC-ColonDB": 380}
+
+    for subdir in os.listdir(root_dir):
+        subdir_path = os.path.join(root_dir, subdir)
+        if os.path.isdir(subdir_path):
+            split_file = os.path.join(subdir_path, "split.txt")
+            image_dir = os.path.join(subdir_path, "images")
+            create_train_val_test_split(
+                image_dir, split_file, train_number=num_train_images_per_dataset[subdir], test_number=num_test_images_per_dataset[subdir])
+
+
+def create_train_val_test_split(root, split_file, train_number=100, test_number=20):
+    """
+    Create a train, val, test split file for a dataset
+    root: root directory of dataset
+    split_file: name of split file to create
+    train_ratio: ratio of train set
+    val_ratio: ratio of val set
+    test_ratio: ratio of test set
+    """
+    # Get all files in root directory
+    files = os.listdir(root)
+    # Filter out non-image files, remove suffix
+    files = [f.split('.')[0]
+             for f in files if f.endswith('.jpg') or f.endswith('.png')]
+    # Shuffle files
+    random.shuffle(files)
+
+    # Calculate number of files for each split
+    num_files = len(files)
+    num_train = train_number
+    num_test = test_number
+    num_val = num_files - num_train - num_test
+    print(f"num_train: {num_train}, num_val: {num_val}, num_test: {num_test}")
+    # Create splits
+    train = files[:num_train]
+    val = files[num_train:num_train + num_val]
+    test = files[num_train + num_val:]
+
+    # Write splits to file
+    with open(split_file, 'w') as file:
+        file.write("train\n")
+        for f in train:
+            file.write(f + "\n")
+        file.write("val\n")
+        for f in val:
+            file.write(f + "\n")
+        file.write("test\n")
+        for f in test:
+            file.write(f + "\n")
+
+
+class PolypDataset(data.Dataset):
+    """
+    dataloader for polyp segmentation tasks
+    """
+
+    def __init__(self, root, image_root=None, gt_root=None, trainsize=352, augmentations=None, train=True, sam_trans=None, datasets=DATASETS, image_size=(1024, 1024), ds_mean=None, ds_std=None):
+        self.trainsize = trainsize
+        self.augmentations = augmentations
+        self.datasets = datasets
+        if isinstance(image_size, int):
+            image_size = (image_size, image_size)
+        self.image_size = image_size
+        if image_root is not None and gt_root is not None:
+            self.images = [
+                os.path.join(image_root, f) for f in os.listdir(image_root) if f.endswith('.jpg') or f.endswith('.png')]
+            self.gts = [
+                os.path.join(gt_root, f) for f in os.listdir(gt_root) if f.endswith('.png')]
+            # also look in subdirectories
+            for subdir in os.listdir(image_root):
+                # if not dir, continue
+                if not os.path.isdir(os.path.join(image_root, subdir)):
+                    continue
+                subdir_image_root = os.path.join(image_root, subdir)
+                subdir_gt_root = os.path.join(gt_root, subdir)
+                self.images.extend([os.path.join(subdir_image_root, f) for f in os.listdir(
+                    subdir_image_root) if f.endswith('.jpg') or f.endswith('.png')])
+                self.gts.extend([os.path.join(subdir_gt_root, f) for f in os.listdir(
+                    subdir_gt_root) if f.endswith('.png')])
+                
+        else:
+            self.images, self.gts = self.get_image_gt_pairs(
+                root, split="train" if train else "test", datasets=self.datasets)
+        self.images = sorted(self.images)
+        self.gts = sorted(self.gts)
+        if not 'VPS' in root:
+            self.filter_files_and_get_ds_mean_and_std()
+        if ds_mean is not None and ds_std is not None:
+            self.mean, self.std = ds_mean, ds_std
+        self.size = len(self.images)
+        self.train = train
+        self.sam_trans = sam_trans
+        if self.sam_trans is not None:
+            # sam trans takes care of norm
+            self.mean, self.std = 0 , 1
+
+    def get_image_gt_pairs(self, dir_root: str, split="train", datasets: tuple = DATASETS):
+        """
+        for each folder in dir root, get all image-gt pairs. Assumes each subdir has a split.txt file
+        dir_root: root directory of all subdirectories, each subdirectory contains images and masks folders
+        split: train, val, or test
+        """
+        image_paths = []
+        gt_paths = []
+        for folder in os.listdir(dir_root):
+            if folder not in datasets:
+                continue
+            split_file = os.path.join(dir_root, folder, "split.txt")
+            if os.path.isfile(split_file):
+                image_root = os.path.join(dir_root, folder, "images")
+                gt_root = os.path.join(dir_root, folder, "masks")
+                image_paths_tmp, gt_paths_tmp = self.get_image_gt_pairs_from_text_file(
+                    image_root, gt_root, split_file, split=split)
+                image_paths.extend(image_paths_tmp)
+                gt_paths.extend(gt_paths_tmp)
+            else:
+                print(
+                    f"No split.txt file found in {os.path.join(dir_root, folder)}")
+
+        return image_paths, gt_paths
+
+    def get_image_gt_pairs_from_text_file(self, image_root: str, gt_root: str, text_file: str, split: str = "train"):
+        """
+        image_root: root directory of images
+        gt_root: root directory of ground truth
+        text_file: text file containing train, val, test split with the following format:
+        train:
+        image1
+        image2
+        ...
+        val:
+        image1
+        image2
+        ...
+        test:
+        image1
+        image2
+        ...
+
+        split: train, val, or test
+        """
+        #  Initialize a dictionary to hold file names for each split
+        splits = {"train": [], "val": [], "test": []}
+        current_split = None
+
+        # Read the text file and categorize file names under each split
+        with open(text_file, 'r') as file:
+            for line in file:
+                line = line.strip()
+                if line in splits:
+                    current_split = line
+                elif line and current_split:
+                    splits[current_split].append(line)
+
+        # Get the file names for the requested split
+        file_names = splits[split]
+
+        # Create image-ground truth pairs
+        image_paths = []
+        gt_paths = []
+        for name in file_names:
+            image_path = os.path.join(image_root, name + '.png')
+            gt_path = os.path.join(gt_root, name + '.png')
+            image_paths.append(image_path)
+            gt_paths.append(gt_path)
+
+        return image_paths, gt_paths
+
+    def get_support_from_dirs(self, support_image_dir, support_mask_dir, n_support=1):
+        support_images = []
+        support_labels = []
+        # get all images and masks
+        support_image_paths = sorted([os.path.join(support_image_dir, f) for f in os.listdir(
+            support_image_dir) if f.endswith('.jpg') or f.endswith('.png')])
+        support_mask_paths = sorted([os.path.join(support_mask_dir, f) for f in os.listdir(
+            support_mask_dir) if f.endswith('.png')])
+        # sample n_support images and masks
+        for i in range(n_support):
+            index = random.randint(0, len(support_image_paths) - 1)
+            support_img = self.cv2_loader(
+                support_image_paths[index], is_mask=False)
+            support_mask = self.cv2_loader(
+                support_mask_paths[index], is_mask=True)
+            support_images.append(support_img)
+            support_labels.append(support_mask)
+
+        if self.augmentations:
+            support_images = [self.augmentations(
+                img, mask)[0] for img, mask in zip(support_images, support_labels)]
+            support_labels = [self.augmentations(
+                img, mask)[1] for img, mask in zip(support_images, support_labels)]
+        
+        support_images = [(support_image - self.mean) / self.std  if support_image.max() == 255 and support_image.min() == 0 else support_image for support_image in support_images]
+        
+        if self.sam_trans is not None:
+            support_images = [self.sam_trans.preprocess(
+                img).squeeze(0) for img in support_images]
+            support_labels = [self.sam_trans.preprocess(
+                mask) for mask in support_labels]
+        else:
+            image_size = self.image_size
+            support_images = [torch.nn.functional.interpolate(img.unsqueeze(
+                0), size=image_size, mode='bilinear', align_corners=False).squeeze(0) for img in support_images]
+            support_labels = [torch.nn.functional.interpolate(mask.unsqueeze(0).unsqueeze(
+                0), size=image_size, mode='nearest').squeeze(0).squeeze(0) for mask in support_labels]
+
+        return torch.stack(support_images), torch.stack(support_labels)
+    
+    def get_support_from_text_file(self, text_file, n_support=1):
+        """
+        each row in the file has 2 paths divided by space, the first is the image path and the second is the mask path
+        """
+        support_images = []
+        support_labels = []
+        with open(text_file, 'r') as file:
+            for line in file:
+                image_path, mask_path = line.strip().split()
+                support_images.append(image_path)
+                support_labels.append(mask_path)
+                
+        # indices = random.choices(range(len(support_images)), k=n_support)
+        if n_support > len(support_images):
+            raise ValueError(f"n_support ({n_support}) is larger than the number of images in the text file ({len(support_images)})")
+        
+        n_support_images = support_images[:n_support]
+        n_support_labels = support_labels[:n_support]
+                
+        return n_support_images, n_support_labels
+
+    def get_support(self, n_support=1, support_image_dir=None, support_mask_dir=None, text_file=None):
+        """
+        Get support set from specified directories, text file or from the dataset itself
+        """
+        if support_image_dir is not None and support_mask_dir:
+            return self.get_support_from_dirs(support_image_dir, support_mask_dir, n_support=n_support)
+        elif text_file is not None:
+            support_image_paths, support_gt_paths = self.get_support_from_text_file(text_file, n_support=n_support)
+        else:
+            # randomly sample n_support images and masks from the dataset
+            indices = random.choices(range(self.size), k=n_support)
+            # indices = list(range(n_support))
+            print(f"support indices:{indices}")
+            support_image_paths = [self.images[index] for index in indices]
+            support_gt_paths = [self.gts[index] for index in indices]
+            
+        support_images = []
+        support_gts = []
+        
+        for image_path, gt_path in zip(support_image_paths, support_gt_paths):
+            support_img = self.cv2_loader(image_path, is_mask=False)
+            support_mask = self.cv2_loader(gt_path, is_mask=True)
+            out = self.process_image_gt(support_img, support_mask)
+            support_images.append(out['image'].unsqueeze(0))
+            support_gts.append(out['label'].unsqueeze(0))
+            if len(support_images) >= n_support:
+                break
+        return support_images, support_gts, out['case']
+        # return torch.stack(support_images), torch.stack(support_gts), out['case']
+    
+    def process_image_gt(self, image, gt, dataset=""):
+        """
+        image and gt are expected to be output from self.cv2_loader
+        """
+        original_size = tuple(image.shape[-2:])
+        if self.augmentations:
+            image, mask = self.augmentations(image, gt)
+        
+        if self.sam_trans:
+            image, mask = self.sam_trans.apply_image_torch(
+                image.unsqueeze(0)), self.sam_trans.apply_image_torch(mask)
+        elif image.max() <= 255 and image.min() >= 0:
+            image = (image - self.mean) / self.std
+        mask[mask > 0.5] = 1
+        mask[mask <= 0.5] = 0
+        # image_size = tuple(img.shape[-2:])
+
+        image_size = self.image_size
+        if self.sam_trans is None:
+            image = torch.nn.functional.interpolate(image.unsqueeze(
+                0), size=image_size, mode='bilinear', align_corners=False).squeeze(0)
+            mask = torch.nn.functional.interpolate(mask.unsqueeze(0).unsqueeze(
+                0), size=image_size, mode='nearest').squeeze(0).squeeze(0)
+            # img = (img - img.min()) / (img.max() - img.min()) # TODO uncomment this if results get worse
+
+        return {'image': self.sam_trans.preprocess(image).squeeze(0) if self.sam_trans else image,
+                'label': self.sam_trans.preprocess(mask) if self.sam_trans else mask,
+                'original_size': torch.Tensor(original_size),
+                'image_size': torch.Tensor(image_size),
+                'case': dataset} # case to be compatible with polyp video dataset
+    
+    def get_dataset_name_from_path(self, path):
+        for dataset in self.datasets:
+            if dataset in path:
+                return dataset
+        return ""
+        
+    def __getitem__(self, index):
+        image = self.cv2_loader(self.images[index], is_mask=False)
+        gt = self.cv2_loader(self.gts[index], is_mask=True)
+        dataset = self.get_dataset_name_from_path(self.images[index])
+        return self.process_image_gt(image, gt, dataset)
+
+    def filter_files_and_get_ds_mean_and_std(self):
+        assert len(self.images) == len(self.gts)
+        images = []
+        gts = []
+        ds_mean = 0
+        ds_std = 0
+        for img_path, gt_path in zip(self.images, self.gts):
+            if any([ex_ds in img_path for ex_ds in EXCLUDE_DS]):
+                continue
+            img = Image.open(img_path)
+            gt = Image.open(gt_path)
+            if img.size == gt.size:
+                images.append(img_path)
+                gts.append(gt_path)
+            ds_mean += np.array(img).mean()
+            ds_std += np.array(img).std()
+        self.images = images
+        self.gts = gts
+        self.mean = ds_mean / len(self.images)
+        self.std = ds_std / len(self.images)
+
+    def rgb_loader(self, path):
+        with open(path, 'rb') as f:
+            img = Image.open(f)
+            return img.convert('RGB')
+
+    def binary_loader(self, path):
+        # with open(path, 'rb') as f:
+        # img = Image.open(f)
+        # return img.convert('1')
+        img = cv2.imread(path, 0)
+        return img
+
+    def cv2_loader(self, path, is_mask):
+        if is_mask:
+            img = cv2.imread(path, 0)
+            img[img > 0] = 1
+        else:
+            img = cv2.cvtColor(cv2.imread(
+                path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+        return img
+
+    def resize(self, img, gt):
+        assert img.size == gt.size
+        w, h = img.size
+        if h < self.trainsize or w < self.trainsize:
+            h = max(h, self.trainsize)
+            w = max(w, self.trainsize)
+            return img.resize((w, h), Image.BILINEAR), gt.resize((w, h), Image.NEAREST)
+        else:
+            return img, gt
+
+    def __len__(self):
+        # return 32
+        return self.size
+    
+
+class SuperpixPolypDataset(PolypDataset):
+    def __init__(self, root, image_root=None, gt_root=None, trainsize=352, augmentations=None, train=True, sam_trans=None, datasets=DATASETS, image_size=(1024, 1024), ds_mean=None, ds_std=None):
+        self.trainsize = trainsize
+        self.augmentations = augmentations
+        self.datasets = datasets
+        self.image_size = image_size
+        # print(self.augmentations)
+        if image_root is not None and gt_root is not None:
+            self.images = [
+                os.path.join(image_root, f) for f in os.listdir(image_root) if f.endswith('.jpg') or f.endswith('.png')]
+            self.gts = [
+                os.path.join(gt_root, f) for f in os.listdir(gt_root) if f.endswith('.png') and 'superpix' in f]
+            # also look in subdirectories
+            for subdir in os.listdir(image_root):
+                # if not dir, continue
+                if not os.path.isdir(os.path.join(image_root, subdir)):
+                    continue
+                subdir_image_root = os.path.join(image_root, subdir)
+                subdir_gt_root = os.path.join(gt_root, subdir)
+                self.images.extend([os.path.join(subdir_image_root, f) for f in os.listdir(
+                    subdir_image_root) if f.endswith('.jpg') or f.endswith('.png')])
+                self.gts.extend([os.path.join(subdir_gt_root, f) for f in os.listdir(
+                    subdir_gt_root) if f.endswith('.png')])
+                
+        else:
+            self.images, self.gts = self.get_image_gt_pairs(
+                root, split="train" if train else "test", datasets=self.datasets)
+        self.images = sorted(self.images)
+        self.gts = sorted(self.gts)
+        if not 'VPS' in root:
+            self.filter_files_and_get_ds_mean_and_std()
+        if ds_mean is not None and ds_std is not None:
+            self.mean, self.std = ds_mean, ds_std
+        self.size = len(self.images)
+        self.train = train
+        self.sam_trans = sam_trans
+        if self.sam_trans is not None:
+            # sam trans takes care of norm
+            self.mean, self.std = 0 , 1
+            
+            
+    def __getitem__(self, index):
+        image = self.cv2_loader(self.images[index], is_mask=False)
+        gt = self.cv2_loader(self.gts[index], is_mask=False)
+        gt = gt[:, :, 0]
+        fgpath = os.path.basename(self.gts[index]).split('.png')[0].split('superpix-MIDDLE_')
+        fgpath = os.path.join(os.path.dirname(self.gts[index]), 'fgmask_' + fgpath[1] + '.png')
+        fg = self.cv2_loader(fgpath, is_mask=True)
+        dataset = self.get_dataset_name_from_path(self.images[index])
+
+        # randomly choose a superpixels from the gt
+        gt[1-fg] = 0
+        sp_id = random.choice(np.unique(gt)[1:])
+        sp = (gt == sp_id).astype(np.uint8)
+        
+        
+        out = self.process_image_gt(image, gt, dataset)
+        support_image, support_sp, dataset = out["image"], out["label"], out["case"]
+        
+        out = self.process_image_gt(image, sp, dataset)
+        query_image, query_sp, dataset = out["image"], out["label"], out["case"]
+
+        # TODO tile the masks to have 3 channels?
+      
+        support_bg_mask = 1 - support_sp
+        support_masks = {"fg_mask": support_sp, "bg_mask": support_bg_mask}
+        
+        batch = {"support_images" : [[support_image]],
+                "support_mask" : [[support_masks]],
+                "query_images" : [query_image],
+                "query_labels" : [query_sp],
+                "scan_id" : [dataset]
+        }
+        
+        return batch
+
+
+def get_superpix_polyp_dataset(image_size:tuple=(1024,1024), sam_trans=None):
+    transform_train, transform_test = get_polyp_transform()
+    image_root = './data/PolypDataset/TrainDataset/images/'
+    gt_root = './data/PolypDataset/TrainDataset/superpixels/'
+    ds_train = SuperpixPolypDataset(root=image_root, image_root=image_root, gt_root=gt_root,
+                            augmentations=transform_train,
+                            sam_trans=sam_trans,
+                            image_size=image_size)
+    
+    return ds_train
+
+def get_polyp_dataset(image_size, sam_trans=None):
+    transform_train, transform_test = get_polyp_transform()
+    image_root = './data/PolypDataset/TrainDataset/images/'
+    gt_root = './data/PolypDataset/TrainDataset/masks/'
+    ds_train = PolypDataset(root=image_root, image_root=image_root, gt_root=gt_root,
+                            augmentations=transform_test, sam_trans=sam_trans, train=True, image_size=image_size)
+    image_root = './data/PolypDataset/TestDataset/test/images/'
+    gt_root = './data/PolypDataset/TestDataset/test/masks/'
+    ds_test = PolypDataset(root=image_root, image_root=image_root, gt_root=gt_root, train=False,
+                           augmentations=transform_test, sam_trans=sam_trans, image_size=image_size)
+    return ds_train, ds_test
+
+
+def get_tests_polyp_dataset(sam_trans):
+    transform_train, transform_test = get_polyp_transform()
+
+    image_root = './data/polyp/TestDataset/Kvasir/images/'
+    gt_root = './data/polyp/TestDataset/Kvasir/masks/'
+    ds_Kvasir = PolypDataset(
+        image_root, gt_root, augmentations=transform_test, train=False, sam_trans=sam_trans)
+
+    image_root = './data/polyp/TestDataset/CVC-ClinicDB/images/'
+    gt_root = './data/polyp/TestDataset/CVC-ClinicDB/masks/'
+    ds_ClinicDB = PolypDataset(
+        image_root, gt_root, augmentations=transform_test, train=False, sam_trans=sam_trans)
+
+    image_root = './data/polyp/TestDataset/CVC-ColonDB/images/'
+    gt_root = './data/polyp/TestDataset/CVC-ColonDB/masks/'
+    ds_ColonDB = PolypDataset(
+        image_root, gt_root, augmentations=transform_test, train=False, sam_trans=sam_trans)
+
+    image_root = './data/polyp/TestDataset/ETIS-LaribPolypDB/images/'
+    gt_root = './data/polyp/TestDataset/ETIS-LaribPolypDB/masks/'
+    ds_ETIS = PolypDataset(
+        image_root, gt_root, augmentations=transform_test, train=False, sam_trans=sam_trans)
+
+    return ds_Kvasir, ds_ClinicDB, ds_ColonDB, ds_ETIS
+
+
+if __name__ == '__main__':
+    # create_train_val_test_split_for_polyps()
+    create_suppport_set_for_polyps()
+
+======================================================================
+ARQUIVO OFICIAL: dataloaders/PolypTransforms.py
+======================================================================
+from __future__ import division
+import torch
+import math
+import sys
+import random
+from PIL import Image
+
+try:
+    import accimage
+except ImportError:
+    accimage = None
+import numpy as np
+import numbers
+import types
+import collections
+import warnings
+
+from torchvision.transforms import functional as F
+
+if sys.version_info < (3, 3):
+    Sequence = collections.Sequence
+    Iterable = collections.Iterable
+else:
+    Sequence = collections.abc.Sequence
+    Iterable = collections.abc.Iterable
+
+__all__ = ["Compose", "ToTensor", "ToPILImage", "Normalize", "Resize", "CenterCrop", "Pad",
+           "Lambda", "RandomApply", "RandomChoice", "RandomOrder", "RandomCrop", "RandomHorizontalFlip",
+           "RandomVerticalFlip", "RandomResizedCrop", "FiveCrop", "TenCrop",
+           "ColorJitter", "RandomRotation", "RandomAffine",
+           "RandomPerspective"]
+
+_pil_interpolation_to_str = {
+    Image.NEAREST: 'PIL.Image.NEAREST',
+    Image.BILINEAR: 'PIL.Image.BILINEAR',
+    Image.BICUBIC: 'PIL.Image.BICUBIC',
+    Image.LANCZOS: 'PIL.Image.LANCZOS',
+    Image.HAMMING: 'PIL.Image.HAMMING',
+    Image.BOX: 'PIL.Image.BOX',
+}
+
+
+class Compose(object):
+    def __init__(self, transforms):
+        self.transforms = transforms
+
+    def __call__(self, img, mask):
+        for t in self.transforms:
+            img, mask = t(img, mask)
+        return img, mask
+
+
+class ToTensor(object):
+    def __call__(self, img, mask):
+        # return F.to_tensor(img), F.to_tensor(mask)
+        img = np.array(img)
+        img = torch.from_numpy(img).permute(2, 0, 1).float() # TODO add division by 255 to match torch.ToTensor()?
+        mask = torch.from_numpy(np.array(mask)).float()
+        return img, mask
+
+
+class ToPILImage(object):
+    def __init__(self, mode=None):
+        self.mode = mode
+
+    def __call__(self, img, mask):
+        return F.to_pil_image(img, self.mode), F.to_pil_image(mask, self.mode)
+
+
+class Normalize(object):
+    def __init__(self, mean, std, inplace=False):
+        self.mean = mean
+        self.std = std
+        self.inplace = inplace
+
+    def __call__(self, img, mask):
+        return F.normalize(img, self.mean, self.std, self.inplace), mask
+
+
+class Resize(object):
+    def __init__(self, size, interpolation=Image.BILINEAR, do_mask=True):
+        assert isinstance(size, int) or (isinstance(size, Iterable) and len(size) == 2)
+        self.size = size
+        self.interpolation = interpolation
+        self.do_mask = do_mask
+
+    def __call__(self, img, mask):
+        if self.do_mask:
+            return F.resize(img, self.size, Image.BICUBIC), F.resize(mask, self.size, Image.BICUBIC)
+        else:
+            return F.resize(img, self.size, Image.BICUBIC), mask
+
+
+class CenterCrop(object):
+    def __init__(self, size):
+        if isinstance(size, numbers.Number):
+            self.size = (int(size), int(size))
+        else:
+            self.size = size
+
+    def __call__(self, img, mask):
+        return F.center_crop(img, self.size), F.center_crop(mask, self.size)
+
+
+class Pad(object):
+    def __init__(self, padding, fill=0, padding_mode='constant'):
+        assert isinstance(padding, (numbers.Number, tuple))
+        assert isinstance(fill, (numbers.Number, str, tuple))
+        assert padding_mode in ['constant', 'edge', 'reflect', 'symmetric']
+        if isinstance(padding, Sequence) and len(padding) not in [2, 4]:
+            raise ValueError("Padding must be an int or a 2, or 4 element tuple, not a " +
+                             "{} element tuple".format(len(padding)))
+
+        self.padding = padding
+        self.fill = fill
+        self.padding_mode = padding_mode
+
+    def __call__(self, img, mask):
+        return F.pad(img, self.padding, self.fill, self.padding_mode), \
+               F.pad(mask, self.padding, self.fill, self.padding_mode)
+
+
+class Lambda(object):
+    def __init__(self, lambd):
+        assert callable(lambd), repr(type(lambd).__name__) + " object is not callable"
+        self.lambd = lambd
+
+    def __call__(self, img, mask):
+        return self.lambd(img), self.lambd(mask)
+
+
+class Lambda_image(object):
+    def __init__(self, lambd):
+        assert callable(lambd), repr(type(lambd).__name__) + " object is not callable"
+        self.lambd = lambd
+
+    def __call__(self, img, mask):
+        return self.lambd(img), mask
+
+
+class RandomTransforms(object):
+    def __init__(self, transforms):
+        assert isinstance(transforms, (list, tuple))
+        self.transforms = transforms
+
+    def __call__(self, *args, **kwargs):
+        raise NotImplementedError()
+
+
+class RandomApply(RandomTransforms):
+    def __init__(self, transforms, p=0.5):
+        super(RandomApply, self).__init__(transforms)
+        self.p = p
+
+    def __call__(self, img, mask):
+        if self.p < random.random():
+            return img, mask
+        for t in self.transforms:
+            img, mask = t(img, mask)
+        return img, mask
+
+
+class RandomOrder(RandomTransforms):
+    def __call__(self, img, mask):
+        order = list(range(len(self.transforms)))
+        random.shuffle(order)
+        for i in order:
+            img, mask = self.transforms[i](img, mask)
+        return img, mask
+
+
+class RandomChoice(RandomTransforms):
+    def __call__(self, img, mask):
+        t = random.choice(self.transforms)
+        return t(img, mask)
+
+
+class RandomCrop(object):
+    def __init__(self, size, padding=None, pad_if_needed=False, fill=0, padding_mode='constant'):
+        if isinstance(size, numbers.Number):
+            self.size = (int(size), int(size))
+        else:
+            self.size = size
+        self.padding = padding
+        self.pad_if_needed = pad_if_needed
+        self.fill = fill
+        self.padding_mode = padding_mode
+
+    @staticmethod
+    def get_params(img, output_size):
+        w, h = img.size
+        th, tw = output_size
+        if w == tw and h == th:
+            return 0, 0, h, w
+
+        i = random.randint(0, h - th)
+        j = random.randint(0, w - tw)
+        return i, j, th, tw
+
+    def __call__(self, img, mask):
+        if self.padding is not None:
+            img = F.pad(img, self.padding, self.fill, self.padding_mode)
+
+        # pad the width if needed
+        if self.pad_if_needed and img.size[0] < self.size[1]:
+            img = F.pad(img, (self.size[1] - img.size[0], 0), self.fill, self.padding_mode)
+        # pad the height if needed
+        if self.pad_if_needed and img.size[1] < self.size[0]:
+            img = F.pad(img, (0, self.size[0] - img.size[1]), self.fill, self.padding_mode)
+
+        i, j, h, w = self.get_params(img, self.size)
+
+        return F.crop(img, i, j, h, w), F.crop(mask, i, j, h, w)
+
+
+class RandomHorizontalFlip(object):
+    def __init__(self, p=0.5):
+        self.p = p
+
+    def __call__(self, img, mask):
+        if random.random() < self.p:
+            return F.hflip(img), F.hflip(mask)
+        return img, mask
+
+
+class RandomVerticalFlip(object):
+    def __init__(self, p=0.5):
+        self.p = p
+
+    def __call__(self, img, mask):
+        if random.random() < self.p:
+            return F.vflip(img), F.vflip(mask)
+        return img, mask
+
+
+class RandomPerspective(object):
+    def __init__(self, distortion_scale=0.5, p=0.5, interpolation=Image.BICUBIC):
+        self.p = p
+        self.interpolation = interpolation
+        self.distortion_scale = distortion_scale
+
+    def __call__(self, img, mask):
+        if not F._is_pil_image(img):
+            raise TypeError('img should be PIL Image. Got {}'.format(type(img)))
+
+        if random.random() < self.p:
+            width, height = img.size
+            startpoints, endpoints = self.get_params(width, height, self.distortion_scale)
+            return F.perspective(img, startpoints, endpoints, self.interpolation), \
+                   F.perspective(mask, startpoints, endpoints, Image.NEAREST)
+        return img, mask
+
+    @staticmethod
+    def get_params(width, height, distortion_scale):
+        half_height = int(height / 2)
+        half_width = int(width / 2)
+        topleft = (random.randint(0, int(distortion_scale * half_width)),
+                   random.randint(0, int(distortion_scale * half_height)))
+        topright = (random.randint(width - int(distortion_scale * half_width) - 1, width - 1),
+                    random.randint(0, int(distortion_scale * half_height)))
+        botright = (random.randint(width - int(distortion_scale * half_width) - 1, width - 1),
+                    random.randint(height - int(distortion_scale * half_height) - 1, height - 1))
+        botleft = (random.randint(0, int(distortion_scale * half_width)),
+                   random.randint(height - int(distortion_scale * half_height) - 1, height - 1))
+        startpoints = [(0, 0), (width - 1, 0), (width - 1, height - 1), (0, height - 1)]
+        endpoints = [topleft, topright, botright, botleft]
+        return startpoints, endpoints
+
+
+class RandomResizedCrop(object):
+    def __init__(self, size, scale=(0.08, 1.0), ratio=(3. / 4., 4. / 3.), interpolation=Image.BILINEAR):
+        if isinstance(size, tuple):
+            self.size = size
+        else:
+            self.size = (size, size)
+        if (scale[0] > scale[1]) or (ratio[0] > ratio[1]):
+            warnings.warn("range should be of kind (min, max)")
+
+        self.interpolation = interpolation
+        self.scale = scale
+        self.ratio = ratio
+
+    @staticmethod
+    def get_params(img, scale, ratio):
+        area = img.size[0] * img.size[1]
+
+        for attempt in range(10):
+            target_area = random.uniform(*scale) * area
+            log_ratio = (math.log(ratio[0]), math.log(ratio[1]))
+            aspect_ratio = math.exp(random.uniform(*log_ratio))
+
+            w = int(round(math.sqrt(target_area * aspect_ratio)))
+            h = int(round(math.sqrt(target_area / aspect_ratio)))
+
+            if w <= img.size[0] and h <= img.size[1]:
+                i = random.randint(0, img.size[1] - h)
+                j = random.randint(0, img.size[0] - w)
+                return i, j, h, w
+
+        # Fallback to central crop
+        in_ratio = img.size[0] / img.size[1]
+        if (in_ratio < min(ratio)):
+            w = img.size[0]
+            h = w / min(ratio)
+        elif (in_ratio > max(ratio)):
+            h = img.size[1]
+            w = h * max(ratio)
+        else:  # whole image
+            w = img.size[0]
+            h = img.size[1]
+        i = (img.size[1] - h) // 2
+        j = (img.size[0] - w) // 2
+        return i, j, h, w
+
+    def __call__(self, img, mask):
+        i, j, h, w = self.get_params(img, self.scale, self.ratio)
+        return F.resized_crop(img, i, j, h, w, self.size, self.interpolation), \
+               F.resized_crop(mask, i, j, h, w, self.size, Image.NEAREST)
+
+
+class FiveCrop(object):
+    def __init__(self, size):
+        self.size = size
+        if isinstance(size, numbers.Number):
+            self.size = (int(size), int(size))
+        else:
+            assert len(size) == 2, "Please provide only two dimensions (h, w) for size."
+            self.size = size
+
+    def __call__(self, img, mask):
+        return F.five_crop(img, self.size), F.five_crop(mask, self.size)
+
+
+class TenCrop(object):
+    def __init__(self, size, vertical_flip=False):
+        self.size = size
+        if isinstance(size, numbers.Number):
+            self.size = (int(size), int(size))
+        else:
+            assert len(size) == 2, "Please provide only two dimensions (h, w) for size."
+            self.size = size
+        self.vertical_flip = vertical_flip
+
+    def __call__(self, img, mask):
+        return F.ten_crop(img, self.size, self.vertical_flip), F.ten_crop(mask, self.size, self.vertical_flip)
+
+
+class ColorJitter(object):
+    def __init__(self, brightness=0, contrast=0, saturation=0, hue=0):
+        self.brightness = self._check_input(brightness, 'brightness')
+        self.contrast = self._check_input(contrast, 'contrast')
+        self.saturation = self._check_input(saturation, 'saturation')
+        self.hue = self._check_input(hue, 'hue', center=0, bound=(-0.5, 0.5),
+                                     clip_first_on_zero=False)
+
+    def _check_input(self, value, name, center=1, bound=(0, float('inf')), clip_first_on_zero=True):
+        if isinstance(value, numbers.Number):
+            if value < 0:
+                raise ValueError("If {} is a single number, it must be non negative.".format(name))
+            value = [center - value, center + value]
+            if clip_first_on_zero:
+                value[0] = max(value[0], 0)
+        elif isinstance(value, (tuple, list)) and len(value) == 2:
+            if not bound[0] <= value[0] <= value[1] <= bound[1]:
+                raise ValueError("{} values should be between {}".format(name, bound))
+        else:
+            raise TypeError("{} should be a single number or a list/tuple with lenght 2.".format(name))
+
+        # if value is 0 or (1., 1.) for brightness/contrast/saturation
+        # or (0., 0.) for hue, do nothing
+        if value[0] == value[1] == center:
+            value = None
+        return value
+
+    @staticmethod
+    def get_params(brightness, contrast, saturation, hue):
+        transforms = []
+
+        if brightness is not None:
+            brightness_factor = random.uniform(brightness[0], brightness[1])
+            transforms.append(Lambda_image(lambda img: F.adjust_brightness(img, brightness_factor)))
+
+        if contrast is not None:
+            contrast_factor = random.uniform(contrast[0], contrast[1])
+            transforms.append(Lambda_image(lambda img: F.adjust_contrast(img, contrast_factor)))
+
+        if saturation is not None:
+            saturation_factor = random.uniform(saturation[0], saturation[1])
+            transforms.append(Lambda_image(lambda img: F.adjust_saturation(img, saturation_factor)))
+
+        if hue is not None:
+            hue_factor = random.uniform(hue[0], hue[1])
+            transforms.append(Lambda_image(lambda img: F.adjust_hue(img, hue_factor)))
+
+        random.shuffle(transforms)
+        transform = Compose(transforms)
+
+        return transform
+
+    def __call__(self, img, mask):
+        transform = self.get_params(self.brightness, self.contrast,
+                                    self.saturation, self.hue)
+        return transform(img, mask)
+
+
+class RandomRotation(object):
+    def __init__(self, degrees, resample=False, expand=False, center=None):
+        if isinstance(degrees, numbers.Number):
+            if degrees < 0:
+                raise ValueError("If degrees is a single number, it must be positive.")
+            self.degrees = (-degrees, degrees)
+        else:
+            if len(degrees) != 2:
+                raise ValueError("If degrees is a sequence, it must be of len 2.")
+            self.degrees = degrees
+
+        self.resample = resample
+        self.expand = expand
+        self.center = center
+
+    @staticmethod
+    def get_params(degrees):
+        angle = random.uniform(degrees[0], degrees[1])
+
+        return angle
+
+    def __call__(self, img, mask):
+        angle = self.get_params(self.degrees)
+
+        return F.rotate(img, angle, Image.BILINEAR, self.expand, self.center), \
+               F.rotate(mask, angle, Image.NEAREST, self.expand, self.center)
+
+
+class RandomAffine(object):
+    def __init__(self, degrees, translate=None, scale=None, shear=None, resample=False, fillcolor=0):
+        if isinstance(degrees, numbers.Number):
+            if degrees < 0:
+                raise ValueError("If degrees is a single number, it must be positive.")
+            self.degrees = (-degrees, degrees)
+        else:
+            assert isinstance(degrees, (tuple, list)) and len(degrees) == 2, \
+                "degrees should be a list or tuple and it must be of length 2."
+            self.degrees = degrees
+
+        if translate is not None:
+            assert isinstance(translate, (tuple, list)) and len(translate) == 2, \
+                "translate should be a list or tuple and it must be of length 2."
+            for t in translate:
+                if not (0.0 <= t <= 1.0):
+                    raise ValueError("translation values should be between 0 and 1")
+        self.translate = translate
+
+        if scale is not None:
+            assert isinstance(scale, (tuple, list)) and len(scale) == 2, \
+                "scale should be a list or tuple and it must be of length 2."
+            for s in scale:
+                if s <= 0:
+                    raise ValueError("scale values should be positive")
+        self.scale = scale
+
+        if shear is not None:
+            if isinstance(shear, numbers.Number):
+                if shear < 0:
+                    raise ValueError("If shear is a single number, it must be positive.")
+                self.shear = (-shear, shear)
+            else:
+                assert isinstance(shear, (tuple, list)) and len(shear) == 2, \
+                    "shear should be a list or tuple and it must be of length 2."
+                self.shear = shear
+        else:
+            self.shear = shear
+
+        self.resample = resample
+        self.fillcolor = fillcolor
+
+    @staticmethod
+    def get_params(degrees, translate, scale_ranges, shears, img_size):
+        angle = random.uniform(degrees[0], degrees[1])
+        if translate is not None:
+            max_dx = translate[0] * img_size[0]
+            max_dy = translate[1] * img_size[1]
+            translations = (np.round(random.uniform(-max_dx, max_dx)),
+                            np.round(random.uniform(-max_dy, max_dy)))
+        else:
+            translations = (0, 0)
+
+        if scale_ranges is not None:
+            scale = random.uniform(scale_ranges[0], scale_ranges[1])
+        else:
+            scale = 1.0
+
+        if shears is not None:
+            shear = random.uniform(shears[0], shears[1])
+        else:
+            shear = 0.0
+
+        return angle, translations, scale, shear
+
+    def __call__(self, img, mask):
+        ret = self.get_params(self.degrees, self.translate, self.scale, self.shear, img.size)
+        return F.affine(img, *ret, interpolation=Image.BILINEAR, fill=self.fillcolor), \
+               F.affine(mask, *ret, interpolation=Image.NEAREST, fill=self.fillcolor)
+
+
+
+def get_cub_transform():
+    transform_train = Compose([
+        ToPILImage(),
+        Resize((256, 256)),
+        RandomHorizontalFlip(),
+        RandomAffine(22, scale=(0.75, 1.25)),
+        ToTensor(),
+        Normalize(mean=[255*0.485, 255*0.456, 255*0.406], std=[255*0.229, 255*0.224, 255*0.225])
+    ])
+    transform_test = Compose([
+        ToPILImage(),
+        Resize((256, 256)),
+        ToTensor(),
+        Normalize(mean=[255*0.485, 255*0.456, 255*0.406], std=[255*0.229, 255*0.224, 255*0.225])
+    ])
+    return transform_train, transform_test
+
+
+def get_glas_transform():
+    transform_train = Compose([
+        ToPILImage(),
+        # Resize((256, 256)),
+        ColorJitter(brightness=0.2,
+                               contrast=0.2,
+                               saturation=0.2,
+                               hue=0.1),
+        RandomHorizontalFlip(),
+        RandomAffine(5, scale=(0.75, 1.25)),
+        ToTensor(),
+        # Normalize(mean=[255*0.485, 255*0.456, 255*0.406], std=[255*0.229, 255*0.224, 255*0.225])
+    ])
+    transform_test = Compose([
+        ToPILImage(),
+        # Resize((256, 256)),
+        ToTensor(),
+        # Normalize(mean=[255*0.485, 255*0.456, 255*0.406], std=[255*0.229, 255*0.224, 255*0.225])
+    ])
+    return transform_train, transform_test
+
+# def get_glas_transform():
+#     transform_train = Compose([
+#         ToPILImage(),
+#         Resize((256, 256)),
+#         ColorJitter(brightness=0.2,
+#                                contrast=0.2,
+#                                saturation=0.2,
+#                                hue=0.1),
+#         RandomHorizontalFlip(),
+#         RandomAffine(5, scale=(0.75, 1.25)),
+#         ToTensor(),
+#         Normalize(mean=[255*0.485, 255*0.456, 255*0.406], std=[255*0.229, 255*0.224, 255*0.225])
+#     ])
+#     transform_test = Compose([
+#         ToPILImage(),
+#         Resize((256, 256)),
+#         ToTensor(),
+#         Normalize(mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375])
+#     ])
+#     return transform_train, transform_test
+
+
+def get_monu_transform(args):
+    Idim = int(args['Idim'])
+    transform_train = Compose([
+        ToPILImage(),
+        # Resize((Idim, Idim)),
+        ColorJitter(brightness=0.4,
+                               contrast=0.4,
+                               saturation=0.4,
+                               hue=0.1),
+        RandomHorizontalFlip(),
+        RandomAffine(int(args['rotate']), scale=(float(args['scale1']), float(args['scale2']))),
+        ToTensor(),
+        # Normalize(mean=[142.07, 98.48, 132.96], std=[65.78, 57.05, 57.78])
+    ])
+    transform_test = Compose([
+        ToPILImage(),
+        # Resize((Idim, Idim)),
+        ToTensor(),
+        # Normalize(mean=[142.07, 98.48, 132.96], std=[65.78, 57.05, 57.78])
+    ])
+    return transform_train, transform_test
+
+
+def get_polyp_transform():
+    transform_train = Compose([
+        # Resize((352, 352)),
+        ToPILImage(),
+        ColorJitter(brightness=0.4,
+                               contrast=0.4,
+                               saturation=0.4,
+                               hue=0.1),
+        RandomVerticalFlip(),
+        RandomHorizontalFlip(),
+        RandomAffine(90, scale=(0.75, 1.25)),
+        ToTensor(),
+        # Normalize([105.61, 63.69, 45.67],
+        #                      [83.08, 55.86, 42.59])
+    ])
+    transform_test = Compose([
+        # Resize((352, 352)),
+        ToPILImage(),
+        ToTensor(),
+        # Normalize([105.61, 63.69, 45.67],
+        #                      [83.08, 55.86, 42.59])
+    ])
+    return transform_train, transform_test
+
+
+def get_polyp_support_train_transform():
+    transform_train = Compose([
+        ColorJitter(brightness=0.4,
+                               contrast=0.4,
+                               saturation=0.4,
+                               hue=0.1),
+        RandomVerticalFlip(),
+        RandomHorizontalFlip(),
+        RandomAffine(90, scale=(0.75, 1.25)),
+    ])
+
+    return transform_train
+======================================================================
+ARQUIVO OFICIAL: training.py
+======================================================================
+"""
+Training the model
+Extended from original implementation of ALPNet.
+"""
+from scipy.ndimage import distance_transform_edt as eucl_distance
+import os
+import shutil
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim
+from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import MultiStepLR
+import numpy as np
+from models.grid_proto_fewshot import FewShotSeg
+from torch.utils.tensorboard import SummaryWriter
+from dataloaders.dev_customized_med import med_fewshot
+from dataloaders.GenericSuperDatasetv2 import SuperpixelDataset
+import dataloaders.augutils as myaug
+
+from util.utils import set_seed, t2n, to01, compose_wt_simple
+from util.metric import Metric
+
+from config_ssl_upload import ex
+from tqdm.auto import tqdm
+# import Tensor
+from torch import Tensor
+from typing import List, Tuple, Union, cast, Iterable, Set, Any, Callable, TypeVar
+
+def get_dice_loss(prediction: torch.Tensor, target: torch.Tensor, smooth=1.0):
+    '''
+    prediction: (B, 1, H, W)
+    target: (B, H, W)
+    '''
+    if prediction.shape[1] > 1:
+        # use only the foreground prediction
+        prediction = prediction[:, 1, :, :]
+    prediction = torch.sigmoid(prediction)
+    intersection = (prediction * target).sum(dim=(-2, -1))
+    union = prediction.sum(dim=(-2, -1)) + target.sum(dim=(1, 2)) + smooth
+
+    dice = (2.0 * intersection + smooth) / union
+    dice_loss = 1.0 - dice.mean()
+
+    return dice_loss
+
+
+def get_train_transforms(_config):
+    tr_transforms = myaug.transform_with_label(
+        {'aug': myaug.get_aug(_config['which_aug'], _config['input_size'][0])})
+    return tr_transforms
+
+    
+def get_dataset_base_name(data_name):
+    if data_name == 'SABS_Superpix':
+        baseset_name = 'SABS'
+    elif data_name == 'C0_Superpix':
+        raise NotImplementedError
+        baseset_name = 'C0'
+    elif data_name == 'CHAOST2_Superpix':
+        baseset_name = 'CHAOST2'
+    elif data_name == 'CHAOST2_Superpix_672':
+        baseset_name = 'CHAOST2'
+    elif data_name == 'SABS_Superpix_448':
+        baseset_name = 'SABS'
+    elif data_name == 'SABS_Superpix_672':
+        baseset_name = 'SABS'
+    elif 'lits' in data_name.lower():
+        baseset_name = 'LITS17'
+    else:
+        raise ValueError(f'Dataset: {data_name} not found')
+
+    return baseset_name
+
+def get_nii_dataset(_config):
+    data_name = _config['dataset']
+    baseset_name = get_dataset_base_name(data_name)
+    tr_transforms = get_train_transforms(_config)
+    tr_parent = SuperpixelDataset(  # base dataset
+        which_dataset=baseset_name,
+        base_dir=_config['path'][data_name]['data_dir'],
+        idx_split=_config['eval_fold'],
+        mode='train',
+        # dummy entry for superpixel dataset
+        min_fg=str(_config["min_fg_data"]),
+        image_size=_config["input_size"][0],
+        transforms=tr_transforms,
+        nsup=_config['task']['n_shots'],
+        scan_per_load=_config['scan_per_load'],
+        exclude_list=_config["exclude_cls_list"],
+        superpix_scale=_config["superpix_scale"],
+        fix_length=_config["max_iters_per_load"] if (data_name == 'C0_Superpix') or (
+            data_name == 'CHAOST2_Superpix') else _config["max_iters_per_load"],
+        use_clahe=_config['use_clahe'],
+        use_3_slices=_config["use_3_slices"],
+        tile_z_dim=3 if not _config["use_3_slices"] else 1,
+    )
+    
+    return tr_parent
+
+
+def get_dataset(_config):
+    return get_nii_dataset(_config)
+
+
+@ex.automain
+def main(_run, _config, _log):
+    precision = torch.float32
+    torch.autograd.set_detect_anomaly(True)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if _run.observers:
+        os.makedirs(f'{_run.observers[0].dir}/snapshots', exist_ok=True)
+        for source_file, _ in _run.experiment_info['sources']:
+            os.makedirs(os.path.dirname(f'{_run.observers[0].dir}/source/{source_file}'),
+                        exist_ok=True)
+            _run.observers[0].save_file(source_file, f'source/{source_file}')
+        shutil.rmtree(f'{_run.observers[0].basedir}/_sources')
+
+    set_seed(_config['seed'])
+
+    writer = SummaryWriter(f'{_run.observers[0].dir}/logs')
+    _log.info('###### Create model ######')
+    if _config['reload_model_path'] != '':
+        _log.info(f'###### Reload model {_config["reload_model_path"]} ######')
+    else:
+        _config['reload_model_path'] = None
+    model = FewShotSeg(image_size=_config['input_size'][0], pretrained_path=_config['reload_model_path'], cfg=_config['model'])
+
+    model = model.to(device, precision)
+    model.train()
+    
+    _log.info('###### Load data ######')
+    data_name = _config['dataset']
+    tr_parent = get_dataset(_config)
+
+    # dataloaders
+    trainloader = DataLoader(
+        tr_parent,
+        batch_size=_config['batch_size'],
+        shuffle=True,
+        num_workers=_config['num_workers'],
+        pin_memory=True,
+        drop_last=True
+    )
+
+    _log.info('###### Set optimizer ######')
+    if _config['optim_type'] == 'sgd':
+        optimizer = torch.optim.SGD(model.parameters(), **_config['optim'])
+    elif _config['optim_type'] == 'adam':
+        optimizer = torch.optim.AdamW(
+            model.parameters(), lr=_config['lr'], eps=1e-5)
+    else:
+        raise NotImplementedError
+
+    scheduler = MultiStepLR(
+        optimizer, milestones=_config['lr_milestones'],  gamma=_config['lr_step_gamma'])
+
+    my_weight = compose_wt_simple(_config["use_wce"], data_name)
+    criterion = nn.CrossEntropyLoss(
+        ignore_index=_config['ignore_label'], weight=my_weight)
+
+    i_iter = 0  # total number of iteration
+    # number of times for reloading
+    n_sub_epoches = max(1, _config['n_steps'] // _config['max_iters_per_load'], _config["epochs"])
+    log_loss = {'loss': 0, 'align_loss': 0}
+
+    _log.info('###### Training ######')
+    epoch_losses = []
+    for sub_epoch in range(n_sub_epoches):
+        _log.info(
+            f'###### This is epoch {sub_epoch} of {n_sub_epoches} epoches ######')
+        pbar = tqdm(trainloader)
+        optimizer.zero_grad()
+        for idx, sample_batched in enumerate(tqdm(trainloader)):
+            losses = []
+            i_iter += 1
+            support_images = [[shot.to(device, precision) for shot in way]
+                              for way in sample_batched['support_images']]
+            support_fg_mask = [[shot[f'fg_mask'].float().to(device, precision) for shot in way]
+                               for way in sample_batched['support_mask']]
+            support_bg_mask = [[shot[f'bg_mask'].float().to(device, precision) for shot in way]
+                               for way in sample_batched['support_mask']]
+
+            query_images = [query_image.to(device, precision)
+                            for query_image in sample_batched['query_images']]
+            query_labels = torch.cat(
+                [query_label.long().to(device) for query_label in sample_batched['query_labels']], dim=0)
+
+            loss = 0.0
+            try:
+                out = model(support_images, support_fg_mask, support_bg_mask,
+                        query_images, isval=False, val_wsize=None)
+                query_pred, align_loss, _, _, _, _, _ = out
+                # pred = np.array(query_pred.argmax(dim=1)[0].cpu())
+            except Exception as e:
+                print(f'faulty batch detected, skip: {e}')
+                # offload cuda memory
+                del support_images, support_fg_mask, support_bg_mask, query_images, query_labels
+                continue
+                 
+            query_loss = criterion(query_pred.float(), query_labels.long())
+            loss += query_loss + align_loss
+            pbar.set_postfix({'loss': loss.item()})
+            loss.backward()
+            if (idx + 1) % _config['grad_accumulation_steps'] == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+                scheduler.step()
+            
+            losses.append(loss.item())
+            query_loss = query_loss.detach().data.cpu().numpy()
+            align_loss = align_loss.detach().data.cpu().numpy() if align_loss != 0 else 0
+
+            _run.log_scalar('loss', query_loss)
+            _run.log_scalar('align_loss', align_loss)
+
+            log_loss['loss'] += query_loss
+            log_loss['align_loss'] += align_loss
+
+            # print loss and take snapshots
+            if (i_iter + 1) % _config['print_interval'] == 0:
+                writer.add_scalar('loss', loss, i_iter)
+                writer.add_scalar('query_loss', query_loss, i_iter)
+                writer.add_scalar('align_loss', align_loss, i_iter)
+
+                loss = log_loss['loss'] / _config['print_interval']
+                align_loss = log_loss['align_loss'] / _config['print_interval']
+
+                log_loss['loss'] = 0
+                log_loss['align_loss'] = 0
+
+                print(
+                    f'step {i_iter+1}: loss: {loss}, align_loss: {align_loss},')
+
+            if (i_iter + 1) % _config['save_snapshot_every'] == 0:
+                _log.info('###### Taking snapshot ######')
+                torch.save(model.state_dict(),
+                           os.path.join(f'{_run.observers[0].dir}/snapshots', f'{i_iter + 1}.pth'))
+
+            if (i_iter - 1) >= _config['n_steps']:
+                break  # finish up
+        epoch_losses.append(np.mean(losses))
+        print(f"Epoch {sub_epoch} loss: {np.mean(losses)}")
+
+======================================================================
+ARQUIVO OFICIAL: util/consts.py
+======================================================================
+IMG_SIZE=252 # 256 is original
+DEFAULT_FEATURE_SIZE=32
+======================================================================
+ARQUIVO OFICIAL: util/lora.py
+======================================================================
+# copied from https://github.com/cloneofsimo/lora
+import json
+import math
+from itertools import groupby
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union
+
+import numpy as np
+import PIL
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+try:
+    from safetensors.torch import safe_open
+    from safetensors.torch import save_file as safe_save
+
+    safetensors_available = True
+except ImportError:
+    from .safe_open import safe_open
+
+    def safe_save(
+        tensors: Dict[str, torch.Tensor],
+        filename: str,
+        metadata: Optional[Dict[str, str]] = None,
+    ) -> None:
+        raise EnvironmentError(
+            "Saving safetensors requires the safetensors library. Please install with pip or similar."
+        )
+
+    safetensors_available = False
+
+
+class LoraInjectedLinear(nn.Module):
+    def __init__(
+        self, in_features, out_features, bias=False, r=4, dropout_p=0.1, scale=1.0
+    ):
+        super().__init__()
+
+        if r > min(in_features, out_features):
+            raise ValueError(
+                f"LoRA rank {r} must be less or equal than {min(in_features, out_features)}"
+            )
+        self.r = r
+        self.linear = nn.Linear(in_features, out_features, bias)
+        self.lora_down = nn.Linear(in_features, r, bias=False)
+        self.dropout = nn.Dropout(dropout_p)
+        self.lora_up = nn.Linear(r, out_features, bias=False)
+        self.scale = scale
+        self.selector = nn.Identity()
+
+        nn.init.normal_(self.lora_down.weight, std=1 / r)
+        nn.init.zeros_(self.lora_up.weight)
+
+    def forward(self, input):
+        return (
+            self.linear(input)
+            + self.dropout(self.lora_up(self.selector(self.lora_down(input))))
+            * self.scale
+        )
+
+    def realize_as_lora(self):
+        return self.lora_up.weight.data * self.scale, self.lora_down.weight.data
+
+    def set_selector_from_diag(self, diag: torch.Tensor):
+        # diag is a 1D tensor of size (r,)
+        assert diag.shape == (self.r,)
+        self.selector = nn.Linear(self.r, self.r, bias=False)
+        self.selector.weight.data = torch.diag(diag)
+        self.selector.weight.data = self.selector.weight.data.to(
+            self.lora_up.weight.device
+        ).to(self.lora_up.weight.dtype)
+
+
+class LoraInjectedConv2d(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size,
+        stride=1,
+        padding=0,
+        dilation=1,
+        groups: int = 1,
+        bias: bool = True,
+        r: int = 4,
+        dropout_p: float = 0.1,
+        scale: float = 1.0,
+    ):
+        super().__init__()
+        if r > min(in_channels, out_channels):
+            raise ValueError(
+                f"LoRA rank {r} must be less or equal than {min(in_channels, out_channels)}"
+            )
+        self.r = r
+        self.conv = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+            bias=bias,
+        )
+
+        self.lora_down = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=r,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+            bias=False,
+        )
+        self.dropout = nn.Dropout(dropout_p)
+        self.lora_up = nn.Conv2d(
+            in_channels=r,
+            out_channels=out_channels,
+            kernel_size=1,
+            stride=1,
+            padding=0,
+            bias=False,
+        )
+        self.selector = nn.Identity()
+        self.scale = scale
+
+        nn.init.normal_(self.lora_down.weight, std=1 / r)
+        nn.init.zeros_(self.lora_up.weight)
+
+    def forward(self, input):
+        return (
+            self.conv(input)
+            + self.dropout(self.lora_up(self.selector(self.lora_down(input))))
+            * self.scale
+        )
+
+    def realize_as_lora(self):
+        return self.lora_up.weight.data * self.scale, self.lora_down.weight.data
+
+    def set_selector_from_diag(self, diag: torch.Tensor):
+        # diag is a 1D tensor of size (r,)
+        assert diag.shape == (self.r,)
+        self.selector = nn.Conv2d(
+            in_channels=self.r,
+            out_channels=self.r,
+            kernel_size=1,
+            stride=1,
+            padding=0,
+            bias=False,
+        )
+        self.selector.weight.data = torch.diag(diag)
+
+        # same device + dtype as lora_up
+        self.selector.weight.data = self.selector.weight.data.to(
+            self.lora_up.weight.device
+        ).to(self.lora_up.weight.dtype)
+
+
+UNET_DEFAULT_TARGET_REPLACE = {"CrossAttention", "Attention", "GEGLU"}
+
+UNET_EXTENDED_TARGET_REPLACE = {"ResnetBlock2D", "CrossAttention", "Attention", "GEGLU"}
+
+TEXT_ENCODER_DEFAULT_TARGET_REPLACE = {"CLIPAttention"}
+
+TEXT_ENCODER_EXTENDED_TARGET_REPLACE = {"CLIPAttention"}
+
+DINO_TARGET_REPLACE = {"NestedTensorBlock", "Mlp", "Attention", "MemEffAttention"}
+
+DEFAULT_TARGET_REPLACE = DINO_TARGET_REPLACE
+
+EMBED_FLAG = "<embed>"
+
+
+def _find_children(
+    model,
+    search_class: List[Type[nn.Module]] = [nn.Linear],
+):
+    """
+    Find all modules of a certain class (or union of classes).
+
+    Returns all matching modules, along with the parent of those moduless and the
+    names they are referenced by.
+    """
+    # For each target find every linear_class module that isn't a child of a LoraInjectedLinear
+    for parent in model.modules():
+        for name, module in parent.named_children():
+            if any([isinstance(module, _class) for _class in search_class]):
+                yield parent, name, module
+
+
+def _find_modules_v2(
+    model,
+    ancestor_class: Optional[Set[str]] = None,
+    search_class: List[Type[nn.Module]] = [nn.Linear],
+    exclude_children_of: Optional[List[Type[nn.Module]]] = [
+        LoraInjectedLinear,
+        LoraInjectedConv2d,
+    ],
+):
+    """
+    Find all modules of a certain class (or union of classes) that are direct or
+    indirect descendants of other modules of a certain class (or union of classes).
+
+    Returns all matching modules, along with the parent of those moduless and the
+    names they are referenced by.
+    """
+
+    # Get the targets we should replace all linears under
+    if ancestor_class is not None:
+        ancestors = (
+            module
+            for module in model.modules()
+            if module.__class__.__name__ in ancestor_class
+        )
+    else:
+        # this, incase you want to naively iterate over all modules.
+        ancestors = [module for module in model.modules()]
+
+    # For each target find every linear_class module that isn't a child of a LoraInjectedLinear
+    for ancestor in ancestors:
+        for fullname, module in ancestor.named_modules():
+            if any([isinstance(module, _class) for _class in search_class]):
+                # Find the direct parent if this is a descendant, not a child, of target
+                *path, name = fullname.split(".")
+                parent = ancestor
+                while path:
+                    parent = parent.get_submodule(path.pop(0))
+                # Skip this linear if it's a child of a LoraInjectedLinear
+                if exclude_children_of and any(
+                    [isinstance(parent, _class) for _class in exclude_children_of]
+                ):
+                    continue
+                # Otherwise, yield it
+                yield parent, name, module
+
+
+def _find_modules_old(
+    model,
+    ancestor_class: Set[str] = DEFAULT_TARGET_REPLACE,
+    search_class: List[Type[nn.Module]] = [nn.Linear],
+    exclude_children_of: Optional[List[Type[nn.Module]]] = [LoraInjectedLinear],
+):
+    ret = []
+    for _module in model.modules():
+        if _module.__class__.__name__ in ancestor_class:
+
+            for name, _child_module in _module.named_modules():
+                if _child_module.__class__ in search_class:
+                    ret.append((_module, name, _child_module))
+    print(ret)
+    return ret
+
+
+_find_modules = _find_modules_v2
+
+
+def inject_trainable_lora(
+    model: nn.Module,
+    target_replace_module: Set[str] = DEFAULT_TARGET_REPLACE,
+    r: int = 4,
+    loras=None,  # path to lora .pt
+    verbose: bool = False,
+    dropout_p: float = 0.0,
+    scale: float = 1.0,
+):
+    """
+    inject lora into model, and returns lora parameter groups.
+    """
+
+    require_grad_params = []
+    names = []
+
+    if loras != None:
+        loras = torch.load(loras)
+
+    for _module, name, _child_module in _find_modules(
+        model, target_replace_module, search_class=[nn.Linear]
+    ):
+        weight = _child_module.weight
+        bias = _child_module.bias
+        if verbose:
+            print("LoRA Injection : injecting lora into ", name)
+            print("LoRA Injection : weight shape", weight.shape)
+        _tmp = LoraInjectedLinear(
+            _child_module.in_features,
+            _child_module.out_features,
+            _child_module.bias is not None,
+            r=r,
+            dropout_p=dropout_p,
+            scale=scale,
+        )
+        _tmp.linear.weight = weight
+        if bias is not None:
+            _tmp.linear.bias = bias
+
+        # switch the module
+        _tmp.to(_child_module.weight.device).to(_child_module.weight.dtype)
+        _module._modules[name] = _tmp
+
+        require_grad_params.append(_module._modules[name].lora_up.parameters())
+        require_grad_params.append(_module._modules[name].lora_down.parameters())
+
+        if loras != None:
+            _module._modules[name].lora_up.weight = loras.pop(0)
+            _module._modules[name].lora_down.weight = loras.pop(0)
+
+        _module._modules[name].lora_up.weight.requires_grad = True
+        _module._modules[name].lora_down.weight.requires_grad = True
+        names.append(name)
+
+    return require_grad_params, names
+
+
+def inject_trainable_lora_extended(
+    model: nn.Module,
+    target_replace_module: Set[str] = UNET_EXTENDED_TARGET_REPLACE,
+    r: int = 4,
+    loras=None,  # path to lora .pt
+):
+    """
+    inject lora into model, and returns lora parameter groups.
+    """
+
+    require_grad_params = []
+    names = []
+
+    if loras != None:
+        loras = torch.load(loras)
+
+    for _module, name, _child_module in _find_modules(
+        model, target_replace_module, search_class=[nn.Linear, nn.Conv2d]
+    ):
+        if _child_module.__class__ == nn.Linear:
+            weight = _child_module.weight
+            bias = _child_module.bias
+            _tmp = LoraInjectedLinear(
+                _child_module.in_features,
+                _child_module.out_features,
+                _child_module.bias is not None,
+                r=r,
+            )
+            _tmp.linear.weight = weight
+            if bias is not None:
+                _tmp.linear.bias = bias
+        elif _child_module.__class__ == nn.Conv2d:
+            weight = _child_module.weight
+            bias = _child_module.bias
+            _tmp = LoraInjectedConv2d(
+                _child_module.in_channels,
+                _child_module.out_channels,
+                _child_module.kernel_size,
+                _child_module.stride,
+                _child_module.padding,
+                _child_module.dilation,
+                _child_module.groups,
+                _child_module.bias is not None,
+                r=r,
+            )
+
+            _tmp.conv.weight = weight
+            if bias is not None:
+                _tmp.conv.bias = bias
+
+        # switch the module
+        _tmp.to(_child_module.weight.device).to(_child_module.weight.dtype)
+        if bias is not None:
+            _tmp.to(_child_module.bias.device).to(_child_module.bias.dtype)
+
+        _module._modules[name] = _tmp
+
+        require_grad_params.append(_module._modules[name].lora_up.parameters())
+        require_grad_params.append(_module._modules[name].lora_down.parameters())
+
+        if loras != None:
+            _module._modules[name].lora_up.weight = loras.pop(0)
+            _module._modules[name].lora_down.weight = loras.pop(0)
+
+        _module._modules[name].lora_up.weight.requires_grad = True
+        _module._modules[name].lora_down.weight.requires_grad = True
+        names.append(name)
+
+    return require_grad_params, names
+
+
+def extract_lora_ups_down(model, target_replace_module=DEFAULT_TARGET_REPLACE):
+
+    loras = []
+
+    for _m, _n, _child_module in _find_modules(
+        model,
+        target_replace_module,
+        search_class=[LoraInjectedLinear, LoraInjectedConv2d],
+    ):
+        loras.append((_child_module.lora_up, _child_module.lora_down))
+
+    if len(loras) == 0:
+        raise ValueError("No lora injected.")
+
+    return loras
+
+
+def extract_lora_as_tensor(
+    model, target_replace_module=DEFAULT_TARGET_REPLACE, as_fp16=True
+):
+
+    loras = []
+
+    for _m, _n, _child_module in _find_modules(
+        model,
+        target_replace_module,
+        search_class=[LoraInjectedLinear, LoraInjectedConv2d],
+    ):
+        up, down = _child_module.realize_as_lora()
+        if as_fp16:
+            up = up.to(torch.float16)
+            down = down.to(torch.float16)
+
+        loras.append((up, down))
+
+    if len(loras) == 0:
+        raise ValueError("No lora injected.")
+
+    return loras
+
+
+def save_lora_weight(
+    model,
+    path="./lora.pt",
+    target_replace_module=DEFAULT_TARGET_REPLACE,
+):
+    weights = []
+    for _up, _down in extract_lora_ups_down(
+        model, target_replace_module=target_replace_module
+    ):
+        weights.append(_up.weight.to("cpu").to(torch.float16))
+        weights.append(_down.weight.to("cpu").to(torch.float16))
+
+    torch.save(weights, path)
+
+
+def save_lora_as_json(model, path="./lora.json"):
+    weights = []
+    for _up, _down in extract_lora_ups_down(model):
+        weights.append(_up.weight.detach().cpu().numpy().tolist())
+        weights.append(_down.weight.detach().cpu().numpy().tolist())
+
+    import json
+
+    with open(path, "w") as f:
+        json.dump(weights, f)
+
+
+def save_safeloras_with_embeds(
+    modelmap: Dict[str, Tuple[nn.Module, Set[str]]] = {},
+    embeds: Dict[str, torch.Tensor] = {},
+    outpath="./lora.safetensors",
+):
+    """
+    Saves the Lora from multiple modules in a single safetensor file.
+
+    modelmap is a dictionary of {
+        "module name": (module, target_replace_module)
+    }
+    """
+    weights = {}
+    metadata = {}
+
+    for name, (model, target_replace_module) in modelmap.items():
+        metadata[name] = json.dumps(list(target_replace_module))
+
+        for i, (_up, _down) in enumerate(
+            extract_lora_as_tensor(model, target_replace_module)
+        ):
+            rank = _down.shape[0]
+
+            metadata[f"{name}:{i}:rank"] = str(rank)
+            weights[f"{name}:{i}:up"] = _up
+            weights[f"{name}:{i}:down"] = _down
+
+    for token, tensor in embeds.items():
+        metadata[token] = EMBED_FLAG
+        weights[token] = tensor
+
+    print(f"Saving weights to {outpath}")
+    safe_save(weights, outpath, metadata)
+
+
+def save_safeloras(
+    modelmap: Dict[str, Tuple[nn.Module, Set[str]]] = {},
+    outpath="./lora.safetensors",
+):
+    return save_safeloras_with_embeds(modelmap=modelmap, outpath=outpath)
+
+
+def convert_loras_to_safeloras_with_embeds(
+    modelmap: Dict[str, Tuple[str, Set[str], int]] = {},
+    embeds: Dict[str, torch.Tensor] = {},
+    outpath="./lora.safetensors",
+):
+    """
+    Converts the Lora from multiple pytorch .pt files into a single safetensor file.
+
+    modelmap is a dictionary of {
+        "module name": (pytorch_model_path, target_replace_module, rank)
+    }
+    """
+
+    weights = {}
+    metadata = {}
+
+    for name, (path, target_replace_module, r) in modelmap.items():
+        metadata[name] = json.dumps(list(target_replace_module))
+
+        lora = torch.load(path)
+        for i, weight in enumerate(lora):
+            is_up = i % 2 == 0
+            i = i // 2
+
+            if is_up:
+                metadata[f"{name}:{i}:rank"] = str(r)
+                weights[f"{name}:{i}:up"] = weight
+            else:
+                weights[f"{name}:{i}:down"] = weight
+
+    for token, tensor in embeds.items():
+        metadata[token] = EMBED_FLAG
+        weights[token] = tensor
+
+    print(f"Saving weights to {outpath}")
+    safe_save(weights, outpath, metadata)
+
+
+def convert_loras_to_safeloras(
+    modelmap: Dict[str, Tuple[str, Set[str], int]] = {},
+    outpath="./lora.safetensors",
+):
+    convert_loras_to_safeloras_with_embeds(modelmap=modelmap, outpath=outpath)
+
+
+def parse_safeloras(
+    safeloras,
+) -> Dict[str, Tuple[List[nn.parameter.Parameter], List[int], List[str]]]:
+    """
+    Converts a loaded safetensor file that contains a set of module Loras
+    into Parameters and other information
+
+    Output is a dictionary of {
+        "module name": (
+            [list of weights],
+            [list of ranks],
+            target_replacement_modules
+        )
+    }
+    """
+    loras = {}
+    metadata = safeloras.metadata()
+
+    get_name = lambda k: k.split(":")[0]
+
+    keys = list(safeloras.keys())
+    keys.sort(key=get_name)
+
+    for name, module_keys in groupby(keys, get_name):
+        info = metadata.get(name)
+
+        if not info:
+            raise ValueError(
+                f"Tensor {name} has no metadata - is this a Lora safetensor?"
+            )
+
+        # Skip Textual Inversion embeds
+        if info == EMBED_FLAG:
+            continue
+
+        # Handle Loras
+        # Extract the targets
+        target = json.loads(info)
+
+        # Build the result lists - Python needs us to preallocate lists to insert into them
+        module_keys = list(module_keys)
+        ranks = [4] * (len(module_keys) // 2)
+        weights = [None] * len(module_keys)
+
+        for key in module_keys:
+            # Split the model name and index out of the key
+            _, idx, direction = key.split(":")
+            idx = int(idx)
+
+            # Add the rank
+            ranks[idx] = int(metadata[f"{name}:{idx}:rank"])
+
+            # Insert the weight into the list
+            idx = idx * 2 + (1 if direction == "down" else 0)
+            weights[idx] = nn.parameter.Parameter(safeloras.get_tensor(key))
+
+        loras[name] = (weights, ranks, target)
+
+    return loras
+
+
+def parse_safeloras_embeds(
+    safeloras,
+) -> Dict[str, torch.Tensor]:
+    """
+    Converts a loaded safetensor file that contains Textual Inversion embeds into
+    a dictionary of embed_token: Tensor
+    """
+    embeds = {}
+    metadata = safeloras.metadata()
+
+    for key in safeloras.keys():
+        # Only handle Textual Inversion embeds
+        meta = metadata.get(key)
+        if not meta or meta != EMBED_FLAG:
+            continue
+
+        embeds[key] = safeloras.get_tensor(key)
+
+    return embeds
+
+
+def load_safeloras(path, device="cpu"):
+    safeloras = safe_open(path, framework="pt", device=device)
+    return parse_safeloras(safeloras)
+
+
+def load_safeloras_embeds(path, device="cpu"):
+    safeloras = safe_open(path, framework="pt", device=device)
+    return parse_safeloras_embeds(safeloras)
+
+
+def load_safeloras_both(path, device="cpu"):
+    safeloras = safe_open(path, framework="pt", device=device)
+    return parse_safeloras(safeloras), parse_safeloras_embeds(safeloras)
+
+
+def collapse_lora(model, alpha=1.0):
+
+    for _module, name, _child_module in _find_modules(
+        model,
+        UNET_EXTENDED_TARGET_REPLACE | TEXT_ENCODER_EXTENDED_TARGET_REPLACE,
+        search_class=[LoraInjectedLinear, LoraInjectedConv2d],
+    ):
+
+        if isinstance(_child_module, LoraInjectedLinear):
+            print("Collapsing Lin Lora in", name)
+
+            _child_module.linear.weight = nn.Parameter(
+                _child_module.linear.weight.data
+                + alpha
+                * (
+                    _child_module.lora_up.weight.data
+                    @ _child_module.lora_down.weight.data
+                )
+                .type(_child_module.linear.weight.dtype)
+                .to(_child_module.linear.weight.device)
+            )
+
+        else:
+            print("Collapsing Conv Lora in", name)
+            _child_module.conv.weight = nn.Parameter(
+                _child_module.conv.weight.data
+                + alpha
+                * (
+                    _child_module.lora_up.weight.data.flatten(start_dim=1)
+                    @ _child_module.lora_down.weight.data.flatten(start_dim=1)
+                )
+                .reshape(_child_module.conv.weight.data.shape)
+                .type(_child_module.conv.weight.dtype)
+                .to(_child_module.conv.weight.device)
+            )
+
+
+def monkeypatch_or_replace_lora(
+    model,
+    loras,
+    target_replace_module=DEFAULT_TARGET_REPLACE,
+    r: Union[int, List[int]] = 4,
+):
+    for _module, name, _child_module in _find_modules(
+        model, target_replace_module, search_class=[nn.Linear, LoraInjectedLinear]
+    ):
+        _source = (
+            _child_module.linear
+            if isinstance(_child_module, LoraInjectedLinear)
+            else _child_module
+        )
+
+        weight = _source.weight
+        bias = _source.bias
+        _tmp = LoraInjectedLinear(
+            _source.in_features,
+            _source.out_features,
+            _source.bias is not None,
+            r=r.pop(0) if isinstance(r, list) else r,
+        )
+        _tmp.linear.weight = weight
+
+        if bias is not None:
+            _tmp.linear.bias = bias
+
+        # switch the module
+        _module._modules[name] = _tmp
+
+        up_weight = loras.pop(0)
+        down_weight = loras.pop(0)
+
+        _module._modules[name].lora_up.weight = nn.Parameter(
+            up_weight.type(weight.dtype)
+        )
+        _module._modules[name].lora_down.weight = nn.Parameter(
+            down_weight.type(weight.dtype)
+        )
+
+        _module._modules[name].to(weight.device)
+
+
+def monkeypatch_or_replace_lora_extended(
+    model,
+    loras,
+    target_replace_module=DEFAULT_TARGET_REPLACE,
+    r: Union[int, List[int]] = 4,
+):
+    for _module, name, _child_module in _find_modules(
+        model,
+        target_replace_module,
+        search_class=[nn.Linear, LoraInjectedLinear, nn.Conv2d, LoraInjectedConv2d],
+    ):
+
+        if (_child_module.__class__ == nn.Linear) or (
+            _child_module.__class__ == LoraInjectedLinear
+        ):
+            if len(loras[0].shape) != 2:
+                continue
+
+            _source = (
+                _child_module.linear
+                if isinstance(_child_module, LoraInjectedLinear)
+                else _child_module
+            )
+
+            weight = _source.weight
+            bias = _source.bias
+            _tmp = LoraInjectedLinear(
+                _source.in_features,
+                _source.out_features,
+                _source.bias is not None,
+                r=r.pop(0) if isinstance(r, list) else r,
+            )
+            _tmp.linear.weight = weight
+
+            if bias is not None:
+                _tmp.linear.bias = bias
+
+        elif (_child_module.__class__ == nn.Conv2d) or (
+            _child_module.__class__ == LoraInjectedConv2d
+        ):
+            if len(loras[0].shape) != 4:
+                continue
+            _source = (
+                _child_module.conv
+                if isinstance(_child_module, LoraInjectedConv2d)
+                else _child_module
+            )
+
+            weight = _source.weight
+            bias = _source.bias
+            _tmp = LoraInjectedConv2d(
+                _source.in_channels,
+                _source.out_channels,
+                _source.kernel_size,
+                _source.stride,
+                _source.padding,
+                _source.dilation,
+                _source.groups,
+                _source.bias is not None,
+                r=r.pop(0) if isinstance(r, list) else r,
+            )
+
+            _tmp.conv.weight = weight
+
+            if bias is not None:
+                _tmp.conv.bias = bias
+
+        # switch the module
+        _module._modules[name] = _tmp
+
+        up_weight = loras.pop(0)
+        down_weight = loras.pop(0)
+
+        _module._modules[name].lora_up.weight = nn.Parameter(
+            up_weight.type(weight.dtype)
+        )
+        _module._modules[name].lora_down.weight = nn.Parameter(
+            down_weight.type(weight.dtype)
+        )
+
+        _module._modules[name].to(weight.device)
+
+
+def monkeypatch_or_replace_safeloras(models, safeloras):
+    loras = parse_safeloras(safeloras)
+
+    for name, (lora, ranks, target) in loras.items():
+        model = getattr(models, name, None)
+
+        if not model:
+            print(f"No model provided for {name}, contained in Lora")
+            continue
+
+        monkeypatch_or_replace_lora_extended(model, lora, target, ranks)
+
+
+def monkeypatch_remove_lora(model):
+    for _module, name, _child_module in _find_modules(
+        model, search_class=[LoraInjectedLinear, LoraInjectedConv2d]
+    ):
+        if isinstance(_child_module, LoraInjectedLinear):
+            _source = _child_module.linear
+            weight, bias = _source.weight, _source.bias
+
+            _tmp = nn.Linear(
+                _source.in_features, _source.out_features, bias is not None
+            )
+
+            _tmp.weight = weight
+            if bias is not None:
+                _tmp.bias = bias
+
+        else:
+            _source = _child_module.conv
+            weight, bias = _source.weight, _source.bias
+
+            _tmp = nn.Conv2d(
+                in_channels=_source.in_channels,
+                out_channels=_source.out_channels,
+                kernel_size=_source.kernel_size,
+                stride=_source.stride,
+                padding=_source.padding,
+                dilation=_source.dilation,
+                groups=_source.groups,
+                bias=bias is not None,
+            )
+
+            _tmp.weight = weight
+            if bias is not None:
+                _tmp.bias = bias
+
+        _module._modules[name] = _tmp
+
+
+def monkeypatch_add_lora(
+    model,
+    loras,
+    target_replace_module=DEFAULT_TARGET_REPLACE,
+    alpha: float = 1.0,
+    beta: float = 1.0,
+):
+    for _module, name, _child_module in _find_modules(
+        model, target_replace_module, search_class=[LoraInjectedLinear]
+    ):
+        weight = _child_module.linear.weight
+
+        up_weight = loras.pop(0)
+        down_weight = loras.pop(0)
+
+        _module._modules[name].lora_up.weight = nn.Parameter(
+            up_weight.type(weight.dtype).to(weight.device) * alpha
+            + _module._modules[name].lora_up.weight.to(weight.device) * beta
+        )
+        _module._modules[name].lora_down.weight = nn.Parameter(
+            down_weight.type(weight.dtype).to(weight.device) * alpha
+            + _module._modules[name].lora_down.weight.to(weight.device) * beta
+        )
+
+        _module._modules[name].to(weight.device)
+
+
+def tune_lora_scale(model, alpha: float = 1.0):
+    for _module in model.modules():
+        if _module.__class__.__name__ in ["LoraInjectedLinear", "LoraInjectedConv2d"]:
+            _module.scale = alpha
+
+
+def set_lora_diag(model, diag: torch.Tensor):
+    for _module in model.modules():
+        if _module.__class__.__name__ in ["LoraInjectedLinear", "LoraInjectedConv2d"]:
+            _module.set_selector_from_diag(diag)
+
+
+def _text_lora_path(path: str) -> str:
+    assert path.endswith(".pt"), "Only .pt files are supported"
+    return ".".join(path.split(".")[:-1] + ["text_encoder", "pt"])
+
+
+def _ti_lora_path(path: str) -> str:
+    assert path.endswith(".pt"), "Only .pt files are supported"
+    return ".".join(path.split(".")[:-1] + ["ti", "pt"])
+
+
+def apply_learned_embed_in_clip(
+    learned_embeds,
+    text_encoder,
+    tokenizer,
+    token: Optional[Union[str, List[str]]] = None,
+    idempotent=False,
+):
+    if isinstance(token, str):
+        trained_tokens = [token]
+    elif isinstance(token, list):
+        assert len(learned_embeds.keys()) == len(
+            token
+        ), "The number of tokens and the number of embeds should be the same"
+        trained_tokens = token
+    else:
+        trained_tokens = list(learned_embeds.keys())
+
+    for token in trained_tokens:
+        print(token)
+        embeds = learned_embeds[token]
+
+        # cast to dtype of text_encoder
+        dtype = text_encoder.get_input_embeddings().weight.dtype
+        num_added_tokens = tokenizer.add_tokens(token)
+
+        i = 1
+        if not idempotent:
+            while num_added_tokens == 0:
+                print(f"The tokenizer already contains the token {token}.")
+                token = f"{token[:-1]}-{i}>"
+                print(f"Attempting to add the token {token}.")
+                num_added_tokens = tokenizer.add_tokens(token)
+                i += 1
+        elif num_added_tokens == 0 and idempotent:
+            print(f"The tokenizer already contains the token {token}.")
+            print(f"Replacing {token} embedding.")
+
+        # resize the token embeddings
+        text_encoder.resize_token_embeddings(len(tokenizer))
+
+        # get the id for the token and assign the embeds
+        token_id = tokenizer.convert_tokens_to_ids(token)
+        text_encoder.get_input_embeddings().weight.data[token_id] = embeds
+    return token
+
+
+def load_learned_embed_in_clip(
+    learned_embeds_path,
+    text_encoder,
+    tokenizer,
+    token: Optional[Union[str, List[str]]] = None,
+    idempotent=False,
+):
+    learned_embeds = torch.load(learned_embeds_path)
+    apply_learned_embed_in_clip(
+        learned_embeds, text_encoder, tokenizer, token, idempotent
+    )
+
+
+def patch_pipe(
+    pipe,
+    maybe_unet_path,
+    token: Optional[str] = None,
+    r: int = 4,
+    patch_unet=True,
+    patch_text=True,
+    patch_ti=True,
+    idempotent_token=True,
+    unet_target_replace_module=DEFAULT_TARGET_REPLACE,
+    text_target_replace_module=TEXT_ENCODER_DEFAULT_TARGET_REPLACE,
+):
+    if maybe_unet_path.endswith(".pt"):
+        # torch format
+
+        if maybe_unet_path.endswith(".ti.pt"):
+            unet_path = maybe_unet_path[:-6] + ".pt"
+        elif maybe_unet_path.endswith(".text_encoder.pt"):
+            unet_path = maybe_unet_path[:-16] + ".pt"
+        else:
+            unet_path = maybe_unet_path
+
+        ti_path = _ti_lora_path(unet_path)
+        text_path = _text_lora_path(unet_path)
+
+        if patch_unet:
+            print("LoRA : Patching Unet")
+            monkeypatch_or_replace_lora(
+                pipe.unet,
+                torch.load(unet_path),
+                r=r,
+                target_replace_module=unet_target_replace_module,
+            )
+
+        if patch_text:
+            print("LoRA : Patching text encoder")
+            monkeypatch_or_replace_lora(
+                pipe.text_encoder,
+                torch.load(text_path),
+                target_replace_module=text_target_replace_module,
+                r=r,
+            )
+        if patch_ti:
+            print("LoRA : Patching token input")
+            token = load_learned_embed_in_clip(
+                ti_path,
+                pipe.text_encoder,
+                pipe.tokenizer,
+                token=token,
+                idempotent=idempotent_token,
+            )
+
+    elif maybe_unet_path.endswith(".safetensors"):
+        safeloras = safe_open(maybe_unet_path, framework="pt", device="cpu")
+        monkeypatch_or_replace_safeloras(pipe, safeloras)
+        tok_dict = parse_safeloras_embeds(safeloras)
+        if patch_ti:
+            apply_learned_embed_in_clip(
+                tok_dict,
+                pipe.text_encoder,
+                pipe.tokenizer,
+                token=token,
+                idempotent=idempotent_token,
+            )
+        return tok_dict
+
+
+@torch.no_grad()
+def inspect_lora(model):
+    moved = {}
+
+    for name, _module in model.named_modules():
+        if _module.__class__.__name__ in ["LoraInjectedLinear", "LoraInjectedConv2d"]:
+            ups = _module.lora_up.weight.data.clone()
+            downs = _module.lora_down.weight.data.clone()
+
+            wght: torch.Tensor = ups.flatten(1) @ downs.flatten(1)
+
+            dist = wght.flatten().abs().mean().item()
+            if name in moved:
+                moved[name].append(dist)
+            else:
+                moved[name] = [dist]
+
+    return moved
+
+
+def save_all(
+    unet,
+    text_encoder,
+    save_path,
+    placeholder_token_ids=None,
+    placeholder_tokens=None,
+    save_lora=True,
+    save_ti=True,
+    target_replace_module_text=TEXT_ENCODER_DEFAULT_TARGET_REPLACE,
+    target_replace_module_unet=DEFAULT_TARGET_REPLACE,
+    safe_form=True,
+):
+    if not safe_form:
+        # save ti
+        if save_ti:
+            ti_path = _ti_lora_path(save_path)
+            learned_embeds_dict = {}
+            for tok, tok_id in zip(placeholder_tokens, placeholder_token_ids):
+                learned_embeds = text_encoder.get_input_embeddings().weight[tok_id]
+                print(
+                    f"Current Learned Embeddings for {tok}:, id {tok_id} ",
+                    learned_embeds[:4],
+                )
+                learned_embeds_dict[tok] = learned_embeds.detach().cpu()
+
+            torch.save(learned_embeds_dict, ti_path)
+            print("Ti saved to ", ti_path)
+
+        # save text encoder
+        if save_lora:
+
+            save_lora_weight(
+                unet, save_path, target_replace_module=target_replace_module_unet
+            )
+            print("Unet saved to ", save_path)
+
+            save_lora_weight(
+                text_encoder,
+                _text_lora_path(save_path),
+                target_replace_module=target_replace_module_text,
+            )
+            print("Text Encoder saved to ", _text_lora_path(save_path))
+
+    else:
+        assert save_path.endswith(
+            ".safetensors"
+        ), f"Save path : {save_path} should end with .safetensors"
+
+        loras = {}
+        embeds = {}
+
+        if save_lora:
+
+            loras["unet"] = (unet, target_replace_module_unet)
+            loras["text_encoder"] = (text_encoder, target_replace_module_text)
+
+        if save_ti:
+            for tok, tok_id in zip(placeholder_tokens, placeholder_token_ids):
+                learned_embeds = text_encoder.get_input_embeddings().weight[tok_id]
+                print(
+                    f"Current Learned Embeddings for {tok}:, id {tok_id} ",
+                    learned_embeds[:4],
+                )
+                embeds[tok] = learned_embeds.detach().cpu()
+
+        save_safeloras_with_embeds(loras, embeds, save_path)
+
+
+INVENTÁRIO LOCAL DE IMAGENS
+
+Raiz: /workspace/polyp_raw
+Destino real: /workspace/polyp_raw
+/workspace/polyp_raw/TestDataset/TestDataset/CVC-300/images: {'.png': 60}
+/workspace/polyp_raw/TestDataset/TestDataset/CVC-300/masks: {'.png': 60}
+/workspace/polyp_raw/TestDataset/TestDataset/CVC-ClinicDB/images: {'.png': 62}
+/workspace/polyp_raw/TestDataset/TestDataset/CVC-ClinicDB/masks: {'.png': 62}
+/workspace/polyp_raw/TestDataset/TestDataset/CVC-ColonDB/images: {'.png': 380}
+/workspace/polyp_raw/TestDataset/TestDataset/CVC-ColonDB/masks: {'.png': 380}
+/workspace/polyp_raw/TestDataset/TestDataset/ETIS-LaribPolypDB/images: {'.png': 196}
+/workspace/polyp_raw/TestDataset/TestDataset/ETIS-LaribPolypDB/masks: {'.png': 196}
+/workspace/polyp_raw/TestDataset/TestDataset/Kvasir/images: {'.png': 100}
+/workspace/polyp_raw/TestDataset/TestDataset/Kvasir/masks: {'.png': 100}
+/workspace/polyp_raw/TrainDataset/TrainDataset/image: {'.png': 1450}
+/workspace/polyp_raw/TrainDataset/TrainDataset/mask: {'.png': 1450}
+
+Raiz: /workspace/ProtoSAM-repro/data/PolypDataset
+Destino real: /workspace/ProtoSAM/data/PolypDataset
+/workspace/ProtoSAM/data/PolypDataset/TestDataset/CVC-300/images: {'.png': 60}
+/workspace/ProtoSAM/data/PolypDataset/TestDataset/CVC-300/masks: {'.png': 60}
+/workspace/ProtoSAM/data/PolypDataset/TestDataset/CVC-ClinicDB/images: {'.png': 62}
+/workspace/ProtoSAM/data/PolypDataset/TestDataset/CVC-ClinicDB/masks: {'.png': 62}
+/workspace/ProtoSAM/data/PolypDataset/TestDataset/CVC-ColonDB/images: {'.png': 380}
+/workspace/ProtoSAM/data/PolypDataset/TestDataset/CVC-ColonDB/masks: {'.png': 380}
+/workspace/ProtoSAM/data/PolypDataset/TestDataset/ETIS-LaribPolypDB/images: {'.png': 196}
+/workspace/ProtoSAM/data/PolypDataset/TestDataset/ETIS-LaribPolypDB/masks: {'.png': 196}
+/workspace/ProtoSAM/data/PolypDataset/TrainDataset/pseudo_masks_dinov2_l: {'.png': 1450}

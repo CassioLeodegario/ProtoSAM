@@ -1,0 +1,8 @@
+{
+  "estado": "concluido",
+  "pacientes_concluidos": 20,
+  "pacientes_total": 20,
+  "fatias_processadas": 713,
+  "fatias_previstas": 713,
+  "manifesto": "/home/1542521/cassio_pereira/ProtoSAM-repro/exp/eft_mri_chaos_v1/manifesto_superpixels.json"
+}

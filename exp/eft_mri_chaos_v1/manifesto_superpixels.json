@@ -1,0 +1,233 @@
+{
+  "dataset": "CHAOS T2-SPIR",
+  "metodo": "Felzenszwalb",
+  "mode": "MIDDLE",
+  "min_size": 400,
+  "sigma": 1,
+  "scale": 1,
+  "fg_thresh": 50.0001,
+  "mascara": "Maior componente conexo + preenchimento",
+  "remapeamento": "superpix_masking original",
+  "pacientes": [
+    {
+      "paciente": 0,
+      "fatias": 36,
+      "fatias_com_foreground": 36,
+      "regioes_total": 795,
+      "foreground_pixels": 1154699,
+      "arquivo_fgmask": "fgmask_0.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_0.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 1,
+      "fatias": 31,
+      "fatias_com_foreground": 30,
+      "regioes_total": 739,
+      "foreground_pixels": 1313669,
+      "arquivo_fgmask": "fgmask_1.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_1.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 2,
+      "fatias": 35,
+      "fatias_com_foreground": 35,
+      "regioes_total": 695,
+      "foreground_pixels": 990206,
+      "arquivo_fgmask": "fgmask_2.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_2.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 3,
+      "fatias": 35,
+      "fatias_com_foreground": 35,
+      "regioes_total": 702,
+      "foreground_pixels": 1326733,
+      "arquivo_fgmask": "fgmask_3.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_3.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 4,
+      "fatias": 34,
+      "fatias_com_foreground": 33,
+      "regioes_total": 871,
+      "foreground_pixels": 1351144,
+      "arquivo_fgmask": "fgmask_4.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_4.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 5,
+      "fatias": 36,
+      "fatias_com_foreground": 36,
+      "regioes_total": 788,
+      "foreground_pixels": 1271758,
+      "arquivo_fgmask": "fgmask_5.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_5.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 6,
+      "fatias": 35,
+      "fatias_com_foreground": 35,
+      "regioes_total": 831,
+      "foreground_pixels": 1450108,
+      "arquivo_fgmask": "fgmask_6.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_6.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 7,
+      "fatias": 31,
+      "fatias_com_foreground": 30,
+      "regioes_total": 658,
+      "foreground_pixels": 1169041,
+      "arquivo_fgmask": "fgmask_7.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_7.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 8,
+      "fatias": 35,
+      "fatias_com_foreground": 35,
+      "regioes_total": 818,
+      "foreground_pixels": 1290280,
+      "arquivo_fgmask": "fgmask_8.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_8.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 9,
+      "fatias": 31,
+      "fatias_com_foreground": 30,
+      "regioes_total": 727,
+      "foreground_pixels": 1136636,
+      "arquivo_fgmask": "fgmask_9.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_9.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 10,
+      "fatias": 33,
+      "fatias_com_foreground": 32,
+      "regioes_total": 696,
+      "foreground_pixels": 964083,
+      "arquivo_fgmask": "fgmask_10.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_10.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 11,
+      "fatias": 38,
+      "fatias_com_foreground": 37,
+      "regioes_total": 1020,
+      "foreground_pixels": 1579647,
+      "arquivo_fgmask": "fgmask_11.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_11.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 12,
+      "fatias": 34,
+      "fatias_com_foreground": 34,
+      "regioes_total": 883,
+      "foreground_pixels": 1111917,
+      "arquivo_fgmask": "fgmask_12.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_12.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 13,
+      "fatias": 46,
+      "fatias_com_foreground": 45,
+      "regioes_total": 1343,
+      "foreground_pixels": 2142891,
+      "arquivo_fgmask": "fgmask_13.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_13.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 14,
+      "fatias": 34,
+      "fatias_com_foreground": 34,
+      "regioes_total": 1081,
+      "foreground_pixels": 1799209,
+      "arquivo_fgmask": "fgmask_14.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_14.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 15,
+      "fatias": 35,
+      "fatias_com_foreground": 34,
+      "regioes_total": 804,
+      "foreground_pixels": 1145613,
+      "arquivo_fgmask": "fgmask_15.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_15.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 16,
+      "fatias": 45,
+      "fatias_com_foreground": 44,
+      "regioes_total": 1218,
+      "foreground_pixels": 1607900,
+      "arquivo_fgmask": "fgmask_16.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_16.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 17,
+      "fatias": 38,
+      "fatias_com_foreground": 37,
+      "regioes_total": 839,
+      "foreground_pixels": 1276197,
+      "arquivo_fgmask": "fgmask_17.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_17.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 18,
+      "fatias": 40,
+      "fatias_com_foreground": 40,
+      "regioes_total": 881,
+      "foreground_pixels": 1340602,
+      "arquivo_fgmask": "fgmask_18.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_18.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    },
+    {
+      "paciente": 19,
+      "fatias": 31,
+      "fatias_com_foreground": 30,
+      "regioes_total": 636,
+      "foreground_pixels": 987387,
+      "arquivo_fgmask": "fgmask_19.nii.gz",
+      "arquivo_superpixels": "superpix-MIDDLE_19.nii.gz",
+      "estado_fg": "criado",
+      "estado_superpixels": "criado"
+    }
+  ]
+}

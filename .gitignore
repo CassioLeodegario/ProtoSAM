@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+
+# Editors / Jupyter scratch
+.vscode/
+.ipynb_checkpoints/
+Untitled.ipynb
+Untitled Folder/
+
+# Original ignores
+exps/
+debug/
+test_*/
+
+# Large data & model weights (NOT versioned)
+data/
+pretrained_model/
+reproducao/
+*.tar
+*.pt
+*.pth
+*.ckpt
+*.zip
+*.npy
+*.npz

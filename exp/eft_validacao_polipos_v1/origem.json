@@ -1,0 +1,12 @@
+{
+  "notebook": "02_vmamba_congelado_k1 (1) (1).ipynb",
+  "sha256": "ff91f082b144b288c2be781eacc7a0eeb681dddf756027a4dd202d8b7464e713",
+  "celulas_referencia": [
+    9,
+    11,
+    12,
+    14,
+    36
+  ],
+  "nota": "Correção explícita da condição inicial: norm pré-treinada como no piloto EFT, não outnorm inicial."
+}

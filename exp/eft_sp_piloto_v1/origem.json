@@ -1,0 +1,6 @@
+{
+  "dados_notebook": "04_eft_dados_e_episodios.ipynb",
+  "dados_notebook_sha256": "c00ec20a1a877b207141df3d95b61dd603a3889a764fbcce8ccbea62d9ac5470",
+  "modelo_fonte": "eft_sp_diagnostico_v1/eft_vmamba_compartilhado.py",
+  "estado": "Pacote não executado em CUDA; diagnósticos anteriores Tiny/Small/Base aprovados no Runpod"
+}

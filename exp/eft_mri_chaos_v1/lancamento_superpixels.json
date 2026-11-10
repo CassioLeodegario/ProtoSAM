@@ -1,0 +1,7 @@
+{
+  "pid": 709832,
+  "script": "/home/1542521/cassio_pereira/ProtoSAM-repro/exp/eft_mri_chaos_v1/gerar_superpixels_mri.py",
+  "log": "/home/1542521/cassio_pereira/ProtoSAM-repro/exp/eft_mri_chaos_v1/superpixels.log",
+  "status": "/home/1542521/cassio_pereira/ProtoSAM-repro/exp/eft_mri_chaos_v1/status_superpixels.json",
+  "modo": "detached"
+}

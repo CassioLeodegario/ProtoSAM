@@ -1,0 +1,366 @@
+from pathlib import Path
+import argparse
+import gc
+import hashlib
+import importlib.metadata
+import json
+import os
+import platform
+import random
+import shutil
+import subprocess
+import sys
+import time
+import traceback
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+CODIGO = Path(__file__).resolve().parent
+ROOT = CODIGO.parent.parent
+os.chdir(ROOT)
+sys.path.insert(0, str(ROOT))
+
+from eft_modelo_672 import construir_modelo
+from eft_alinhamento_seguro import instalar
+
+DADOS = Path('/home/1542521/cassio_pereira/ProtoSAM-repro/reproducao/eft_SAM_vs_SP256_1231_20261021T194500705194Z/plano_SAM')
+H2000 = ROOT / "reproducao/eft_tiny_2000_v2_20261011T204725195685Z"
+H5000 = ROOT / "reproducao/eft_tiny_5000_20261011T224215171455Z"
+PRESERVAR = set([0, 50, 100, 200, 500, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000])
+
+def ler(p):
+    return json.loads(Path(p).read_text(encoding="utf-8"))
+
+def sha(p):
+    h = hashlib.sha256()
+    with Path(p).open("rb") as f:
+        for bloco in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(bloco)
+    return h.hexdigest()
+
+def json_atomico(p, obj):
+    p = Path(p)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, p)
+
+def rng_atual():
+    n = np.random.get_state()
+    return {
+        "python": random.getstate(),
+        "numpy": [n[0], n[1].tolist(), n[2], n[3], n[4]],
+        "torch": torch.get_rng_state(),
+        "cuda": torch.cuda.get_rng_state_all(),
+    }
+
+def restaurar_rng(r):
+    random.setstate(r["python"])
+    n = r["numpy"]
+    np.random.set_state((n[0], np.asarray(n[1], dtype=np.uint32), n[2], n[3], n[4]))
+    torch.set_rng_state(r["torch"])
+    torch.cuda.set_rng_state_all(r["cuda"])
+
+def episodio(registro):
+    from PIL import Image
+
+    with np.load(Path(registro["cache"]), allow_pickle=False) as d:
+        mask512 = d["candidatas"][registro["regiao"]].copy()
+    assert mask512.shape == (512, 512) and mask512.any()
+
+    imagem_original = Path(registro["imagem"])
+    assert sha(imagem_original) == registro["imagem_sha256"]
+    with Image.open(imagem_original) as im:
+        rgb = np.array(
+            im.convert("RGB").resize(
+                (672, 672), Image.Resampling.BILINEAR
+            )
+        )
+
+    mask = np.array(
+        Image.fromarray(mask512.astype(np.uint8)).resize(
+            (672, 672), Image.Resampling.NEAREST
+        )
+    ) > 0
+    assert mask.any()
+
+    def imagem(a):
+        t = torch.from_numpy(np.ascontiguousarray(a))
+        t = t.permute(2, 0, 1)[None].to("cuda", dtype=torch.float32)
+        media = t.new_tensor([123.675, 116.28, 103.53])[None, :, None, None]
+        desvio = t.new_tensor([58.395, 57.12, 57.375])[None, :, None, None]
+        return (t - media) / desvio
+
+    return (
+        imagem(rgb),
+        torch.from_numpy(mask.copy())[None].to("cuda", dtype=torch.float32),
+        imagem(np.fliplr(rgb)),
+        torch.from_numpy(np.fliplr(mask).copy())[None].to(
+            "cuda", dtype=torch.long
+        ),
+    )
+
+def preparar_plano():
+    plano = ler(DADOS / "planos.json")
+    assert len(plano["treino"]) == 10000
+    assert plano["treino"][:5000] == plano["treino"][5000:]
+    assert len({r["indice"] for r in plano["treino"]}) == 1231
+
+    vistos = set()
+    for r in plano["treino"]:
+        assert r["split"] == "treino"
+        cache = Path(r["cache"])
+        assert cache.is_absolute()
+        if str(cache) not in vistos:
+            assert sha(cache) == r["cache_sha256"], cache
+            vistos.add(str(cache))
+
+    assert len(vistos) == 1231
+    print("Plano conferido: 1231 imagens; 10000 episodios.", flush=True)
+    return plano
+
+def versao(nome):
+    try:
+        return importlib.metadata.version(nome)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+def main(pasta):
+    import selective_scan_cuda
+    from models import vmamba
+    assert vmamba.WITH_SELECTIVESCAN_MAMBA, 'Backend CUDA indisponivel.'
+    assert sha(selective_scan_cuda.__file__) == '48cd62932a7b3ccd5e57eb80c40fcced8e3f35ec7e5ff219fc90d20021961f66', 'Extensao CUDA diferente da validada.'
+    assert torch.cuda.is_available()
+    def recusar_fallback(*args, **kwargs):
+        raise RuntimeError('Fallback Torch proibido neste treino.')
+    vmamba.selective_scan_torch = recusar_fallback
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(False)
+
+    plano = preparar_plano()
+    fontes = [
+        Path(__file__), CODIGO / "eft_modelo_672.py",
+        CODIGO / "eft_alinhamento_seguro.py",
+        ROOT / "models/vmamba.py",
+        ROOT / "models/grid_proto_fewshot.py",
+        ROOT / "models/alpmodule.py",
+    ]
+    pesos = ROOT / "pretrained_model/vmamba_tiny_v2.pth"
+    digest_pesos = sha(pesos)
+    assert digest_pesos == "09739f6d95638e5caf0d33fcbca85b7cff62b8ca16ec2926d781109939c6b201"
+
+    gpu_info = subprocess.run(
+        ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
+        capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+    config = {
+        "formato": 1, "total_passos": 10000, "semente": 1234,
+        "experimento": "EFT SAM, subconjunto1231, treino672, 10k",
+        "pseudolabel": "SAM",
+        "repeticao_plano": {
+            "episodios_por_ciclo": 5000,
+            "ciclos": 2,
+            "ordem": "historica filtrada e estendida; dois ciclos identicos",
+        },
+        "decay_aplicado_a": "todos os parametros do otimizador",
+        "backend_scan": "selective_scan_cuda",
+        "mamba_ssm": versao("mamba-ssm"),
+        "extensao_scan": str(Path(selective_scan_cuda.__file__).resolve()),
+        "extensao_scan_sha256": sha(selective_scan_cuda.__file__),
+        "benchmark_previo": '/home/1542521/cassio_pereira/ProtoSAM-repro/reproducao/eft512_benchmark_cuda_20261017T101300393042Z',
+        "benchmark_sha256": 'f7d36e812db75c1bc55f08f97202f4e781a376618ddb1d5795bb488d62bb7fe2',
+        "inicio": "pesos pre-treinados; sem checkpoint EFT anterior",
+        "checkpoint_origem": str(pesos),
+        "checkpoint_origem_sha256": digest_pesos,
+        "resolucao_treino": [672, 672], "grade_alp": [32, 32],
+        "preparo_672": {
+            "rgb": "original RGB -> PIL bilinear 672",
+            "mascara": "candidata SAM512 -> PIL nearest672",
+            "superpixels_recalculados": False,
+            "mascaras_geradas_por_SAM": True,
+            "aumento": "query por flip horizontal apos resize",
+        },
+        "batch_episodico": 1, "adaptacao": "encoder completo, features da ultima camada",
+        "otimizador": "AdamW", "lr": 1e-5, "betas": [0.9, 0.999],
+        "eps": 1e-8, "weight_decay": 0.01,
+        "amp": False, "scheduler": None, "clipping": None,
+        "loss": "CE + alinhamento; pesos 1 e 1",
+        "alinhamento_seguro": "ativo desde o primeiro passo",
+        "dados": str(DADOS),
+        "dados_config_sha256": sha(DADOS / "config.json"),
+        "plano512_origem_sha256": sha(DADOS / "planos.json"),
+        "plano5000_historico_sha256": sha(H5000 / "planos.json"),
+        "checkpoint_a_cada": 50, "checkpoints_preservados": sorted(PRESERVAR),
+        "avaliacao_polipos": "separada: encoder672/SAM1024",
+        "limitacao_retomada": "retomada salva pesos, otimizador e RNG; identidade bit a bit nao garantida; diagnostico anterior de variacao realizado no backend Torch",
+        "fontes_sha256": {str(p): sha(p) for p in fontes},
+        "ambiente": {
+            "python": platform.python_version(),
+            "pacotes": {n: versao(n) for n in (
+                "torch", "torchvision", "numpy", "Pillow", "timm", "fvcore", "triton"
+            )},
+            "cuda": torch.version.cuda,
+            "cudnn": torch.backends.cudnn.version(),
+            "gpu_driver": gpu_info,
+            "tf32_matmul": False, "tf32_cudnn": True,
+            "cudnn_benchmark": False, "deterministico": False,
+        },
+    }
+
+    pasta.mkdir(parents=True, exist_ok=True)
+    cfg = pasta / "config.json"
+    if cfg.exists():
+        assert ler(cfg) == config, "Código/configuração/ambiente mudou. Retomada interrompida."
+        assert ler(pasta / "planos.json") == plano, "Plano da execução mudou."
+    else:
+        assert not (pasta / "checkpoint_latest.pt").exists()
+        json_atomico(cfg, config)
+        json_atomico(pasta / "planos.json", plano)
+        (pasta / "fontes").mkdir(exist_ok=True)
+        for i, p in enumerate(fontes):
+            shutil.copy2(p, pasta / "fontes" / f"{i:02d}_{p.name}")
+        shutil.copy2(DADOS / "config.json", pasta / "config_dados.json")
+
+    print("EXECUÇÃO:", pasta, flush=True)
+    modelo = construir_modelo("tiny", repo=ROOT)
+    estado_align = instalar(modelo)
+    otimizador = torch.optim.AdamW(
+        modelo.parameters(), lr=1e-5, betas=(0.9, 0.999),
+        eps=1e-8, weight_decay=0.01
+    )
+    latest = pasta / "checkpoint_latest.pt"
+
+    def preservar(n):
+        destino = pasta / f"checkpoint_{n:04d}.pt"
+        if n in PRESERVAR and not destino.exists():
+            try:
+                os.link(latest, destino)
+            except OSError:
+                tmp = destino.with_suffix(".tmp")
+                shutil.copy2(latest, tmp)
+                os.replace(tmp, destino)
+
+    def salvar(n):
+        tmp = latest.with_suffix(".tmp")
+        torch.save({
+            "formato": 1, "passo": n,
+            "modelo": modelo.state_dict(),
+            "otimizador": otimizador.state_dict(),
+            "scheduler": None, "rng": rng_atual(), "config": config,
+        }, tmp)
+        os.replace(tmp, latest)
+        preservar(n)
+
+    passo = 0
+    if latest.exists():
+        salvo = torch.load(latest, map_location="cpu", weights_only=True)
+        assert salvo["formato"] == 1 and salvo["config"] == config
+        assert salvo["scheduler"] is None
+        modelo.load_state_dict(salvo["modelo"], strict=True)
+        otimizador.load_state_dict(salvo["otimizador"])
+        passo = int(salvo["passo"])
+        assert 0 <= passo <= 10000
+        restaurar_rng(salvo["rng"])
+        del salvo
+        preservar(passo)
+        print(f"Retomada após passo {passo}.", flush=True)
+    else:
+        salvar(0)
+        print("Início novo: checkpoint 0 salvo, pesos pré-treinados.", flush=True)
+
+    tentativa = time.time_ns()
+    log = pasta / f"passos_{tentativa}.jsonl"
+    modelo.train()
+    torch.cuda.reset_peak_memory_stats()
+    inicio_execucao = time.perf_counter()
+    passo_inicial = passo
+
+    with log.open("x", encoding="utf-8", buffering=1) as f:
+        for n in range(passo + 1, 10001):
+            inicio = time.perf_counter()
+            r = plano["treino"][n - 1]
+            s, fg, q, alvo = episodio(r)
+            otimizador.zero_grad(set_to_none=True)
+            estado_align["ultimo"] = None
+
+            retorno = modelo(
+                [[s]], [[fg]], [[1 - fg]], [q],
+                isval=False, val_wsize=2, show_viz=False
+            )
+            logits, alinhamento = retorno[:2]
+            assert logits.shape == (1, 2, 672, 672)
+            assert torch.isfinite(logits).all().item(), "Logits não finitos."
+
+            ce = F.cross_entropy(logits, alvo)
+            loss = ce + alinhamento
+            assert torch.isfinite(loss).item(), "Loss não finita."
+            loss.backward()
+
+            grads = [p.grad for p in modelo.encoder.parameters() if p.grad is not None]
+            assert grads
+            assert torch.stack([torch.isfinite(g).all() for g in grads]).all().item()
+            assert torch.stack([g.abs().max() for g in grads]).max().item() > 0
+
+            otimizador.step()
+            assert torch.stack([
+                torch.isfinite(p).all() for p in modelo.parameters()
+            ]).all().item(), "Pesos não finitos."
+
+            linha = {
+                "passo": n, "ciclo_plano": (n - 1) // 5000 + 1,
+                "posicao_no_ciclo": (n - 1) % 5000 + 1,
+                "indice": r["indice"], "imagem": r["imagem"],
+                "regiao": r["regiao"], "ce": ce.item(),
+                "alinhamento": float(alinhamento.detach())
+                    if torch.is_tensor(alinhamento) else float(alinhamento),
+                "total": loss.item(),
+                "alinhamento_excecao": estado_align["ultimo"],
+                "segundos": time.perf_counter() - inicio,
+            }
+            f.write(json.dumps(linha, ensure_ascii=False) + "\n")
+            del retorno, logits, alinhamento, ce, loss, grads, s, fg, q, alvo
+            otimizador.zero_grad(set_to_none=True)
+
+            if n % 50 == 0:
+                salvar(n)
+                print(f"Checkpoint salvo: {n}", flush=True)
+
+            if n == passo_inicial + 1 or n % 10 == 0:
+                media = (time.perf_counter() - inicio_execucao) / (n - passo_inicial)
+                restante_h = media * (10000 - n) / 3600
+                print(
+                    f"{n}/10000 | loss={linha['total']:.6f} | "
+                    f"CE={linha['ce']:.6f} | align={linha['alinhamento']:.6f} | "
+                    f"{media:.2f}s/passo | restante estimado={restante_h:.2f}h",
+                    flush=True
+                )
+
+    json_atomico(pasta / "concluido.json", {
+        "passos": 10000,
+        "checkpoint": str(latest),
+        "pico_memoria_alocada_GiB": torch.cuda.max_memory_allocated() / 1024**3,
+        "avaliacao_polipos_pendente": True,
+    })
+    print("TREINAMENTO CONCLUIDO: SAM, 1231 imagens, 10000 passos, 672.", flush=True)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run", required=True)
+    args = parser.parse_args()
+    pasta = Path(args.run).resolve()
+    import fcntl
+    pasta.mkdir(parents=True, exist_ok=True)
+    trava = (pasta / 'execucao.lock').open('w')
+    fcntl.flock(trava, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        main(pasta)
+    except BaseException:
+        if pasta.is_dir():
+            (pasta / f"erro_{time.time_ns()}.txt").write_text(
+                traceback.format_exc(), encoding="utf-8"
+            )
+        raise

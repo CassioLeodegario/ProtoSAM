@@ -78,7 +78,7 @@ Cada notebook em `exp/` responde a **uma pergunta**. Em ordem:
 
 ## 5. Melhores resultados até aqui
 
-> **Destaque:** o melhor resultado consolidado é **Dice_SAM = 62,5%**
+> **Destaque (protocolo TC abdominal):** o melhor resultado neste cenário é **Dice_SAM = 62,5%**
 > (Dice_ALP = 53,8%), obtido com **EFT no VMamba tiny, 2000 passos de treino,
 > lendo a última camada, normalização "do checkpoint"**. O experimento
 > **EFT512** (penúltima camada @512 px) empata nisso (~62,6% SAM).
@@ -152,3 +152,66 @@ As comparações confiáveis são os arquivos `reproducao/avaliacao_*.json`.
 ---
 *Metodologia: Dice médio sobre as consultas, K1. Números extraídos de
 `reproducao/avaliacao_*.json` via scripts em `_claude_tools/` (fora do versionamento).*
+
+---
+
+## 8. Consolidação por modalidade — RM, TC (rins), pólipos e multi-suporte
+
+Esta seção reúne os experimentos que antes estavam só em forma bruta (notebooks
+15, 16, 18, 19-22). Métrica = **Dice (%)**, 1-shot salvo indicado. **Atenção:**
+datasets diferentes **não** são comparáveis diretamente entre si.
+
+### 8a. Melhor resultado por dataset
+
+| Dataset | Alvo | Melhor configuração | **Dice_SAM** |
+|---|---|---|---:|
+| **Pólipos (Kvasir)** | pólipo | **DINOv2-L (multi-suporte)** | **74,6** |
+| TC abdominal (SABS) | órgão | EFT VMamba *tiny*, 2000 passos | 62,5 |
+| **RM abdominal (CHAOS)** | rim direito | **DINOv2-L @672 px (congelado)** | **60,7** |
+
+> **O melhor Dice absoluto até agora é em pólipos com DINOv2 (74,6%)** — não no
+> protocolo TC. Cada domínio tem seu campeão (ver abaixo).
+
+### 8b. Ressonância (CHAOS) — rins, fold 0
+
+| Backbone / config | Rim D. (RK) | Rim E. (LK) |
+|---|---:|---:|
+| DINOv2-L @256 px (congelado) | 44,8 | 47,4 |
+| **DINOv2-L @672 px (congelado)** | **60,7** | 48,8 |
+| VMamba *tiny* + EFT (CHAOS, 10k passos) | 28,5 | 34,4 |
+| VMamba + EFT (CT felzenszwalb, fold 0) | 30,9 | 27,0 |
+
+**Leitura:** em RM, aumentar a **resolução para 672 px** dá um salto no DINOv2
+(44,8 -> 60,7 no rim direito). Já o **EFT no VMamba fica bem abaixo** (28-34%): a
+receita que venceu no TC **não transfere** para a RM.
+
+### 8c. Pólipos (Kvasir)
+
+| Backbone | Dice_SAM |
+|---|---:|
+| **DINOv2-L (multi-suporte, melhor caso)** | **74,6** |
+| DINOv2-L (outro suporte) | 70,7 |
+| VMamba *tiny* + EFT | ~56,5 |
+| VMamba *small* + EFT | 41,2 *(piorou vs. 48,7 congelado)* |
+| VMamba *base* + EFT | 39,9 *(piorou vs. 44,6 congelado)* |
+
+**Leitura:** **DINOv2 domina em pólipos.** O EFT só ajuda o VMamba *tiny*; nos
+modelos *small*/*base* o fine-tuning **piorou** o resultado.
+
+### 8d. Sensibilidade ao suporte (multi-suporte, VMamba *tiny*, Kvasir)
+
+Variando qual exemplo de suporte é usado (18 casos), o Dice_SAM oscilou de
+**~21% a ~62%**. **Conclusão:** em one-shot, **a escolha do exemplo de suporte
+tem impacto enorme** na qualidade — resultado instável por natureza.
+
+### Ressalvas de dados (ler antes de citar números)
+
+1. **Baseline "antes" suspeito:** vários `resumo.json` compartilham exatamente o
+   mesmo valor "antes" (48,1 / 51,6), igual ao baseline do TC. Indício de que o
+   "antes" foi **herdado do protocolo TC**, não recomputado no dataset alvo.
+   Confie no **"depois"** (modelo avaliado); trate os *deltas* antes->depois de
+   pólipos com cautela e re-valide.
+2. **Agregações diferentes:** RM/CT usam média **por paciente**
+   (`resumo_geral.csv`); pólipos usam média **por imagem** (`resumo.json`).
+3. Números extraídos dos arquivos `resumo_geral.csv` e `resumo.json` de cada
+   rodada (scripts em `_claude_tools/`).

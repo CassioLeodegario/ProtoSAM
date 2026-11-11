@@ -8,9 +8,9 @@ import sys
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-TESTES = ['test_oficial_intacto.py', 'test_travas.py', 'test_referencias.py']
+TESTES = ['test_oficial_intacto.py', 'test_travas.py', 'test_tabelas.py', 'test_referencias.py']
 
-for teste in TESTES[:2] if '--rapido' in sys.argv else TESTES:
+for teste in TESTES[:3] if '--rapido' in sys.argv else TESTES:
     print(f'== {teste}', flush=True)
     if subprocess.run([sys.executable, str(RAIZ / 'tests' / teste)]).returncode:
         sys.exit(f'CHECAGEM FALHOU em {teste}')

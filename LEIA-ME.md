@@ -14,13 +14,17 @@ protovm/            código nosso, uma cópia só
   avaliar.py        ALP + SAM-H em V ou T, um suporte por chamada
   registro.py       resultados/registro.csv
   protocolo.py      conjuntos e suportes congelados; travas (ver PROTOCOLO.md)
+  tabelas.py        tabelas e diferença pareada a partir do registro
 configs/eft/        um YAML por experimento de treino (herdam de _base.yaml)
-scripts/            preparar_dados.py, treinar_eft.py, avaliar.py, checar.py, ligar_dados.sh
+scripts/            preparar_dados.py, treinar_eft.py, avaliar.py, gerar_tabelas.py, checar.py, ligar_dados.sh
 protocolo/          polipos_v1.json (nomes dos arquivos de V, T, pool e suportes),
                     finais.yaml (configurações autorizadas no teste), referencias_v1.json
 resultados/         registro.csv — uma linha por avaliação
 notebooks/          só análise: leem o registro e as pastas de runs/
-tests/              verificações automáticas (código oficial intacto, travas, números de referência)
+experimentos/       uma pasta por experimento: ficha.md, tabela.yaml e tabela.md (gerada)
+rascunho/           testes livres; fora do git e fora do texto
+DIARIO.md           três linhas por sessão
+tests/              verificações automáticas (código oficial, travas, tabelas, números de referência)
 migracao/           scripts usados uma vez para trazer o ProtoSAM-repro
 runs/               saídas (fora do git)
 dados_eft/          caches de episódios (fora do git)
@@ -72,11 +76,32 @@ python scripts/avaliar.py --treino runs/<pasta> --passos 1000 2000 3000 --resolu
 jupyter lab notebooks/01_resultados.ipynb
 ```
 
-Novo experimento = novo YAML em `configs/` + commit. Não copie código para mudar um número:
-se faltar um parâmetro, acrescente-o em `protovm/` (com valor padrão igual ao comportamento atual).
+Não copie código para mudar um número: se faltar um parâmetro, acrescente-o em `protovm/` (com
+valor padrão igual ao comportamento atual). Treinos e avaliações longos rodam pelos scripts, dentro
+de um `screen`.
 
-Notebooks servem para olhar resultados e prototipar. O que for reutilizado vai para `protovm/` e o
-notebook passa a importar. Treinos e avaliações longos rodam pelos scripts, dentro de um `screen`.
+## Passo a passo de cada experimento
+
+| # | Passo | O que fazer | Pronto quando |
+|---|---|---|---|
+| 1 | Ficha | Copiar `experimentos/MODELO` para `experimentos/ENN_nome` e preencher `ficha.md` até a regra de decisão | Commit da ficha feito, antes de rodar |
+| 2 | Configuração | Um YAML por treino em `configs/`; parâmetro que faltar entra em `protovm/` | Commit feito |
+| 3 | Checagem | `python scripts/checar.py` | Termina com `CHECAGEM OK` |
+| 4 | Treino, se houver | Num `screen`: `python scripts/treinar_eft.py configs/<arquivo>.yaml` | Checkpoints em `runs/` |
+| 5 | Avaliação | `python scripts/avaliar.py ... --suportes todos` (validação) | Linhas `novo` em `resultados/registro.csv` |
+| 6 | Tabela | Preencher `tabela.yaml` e rodar `python scripts/gerar_tabelas.py experimentos/ENN_nome` | `tabela.md` gerado; nenhum número digitado |
+| 7 | Decisão | Preencher "Resultado" e "Decisão" na ficha, pela regra do passo 1 | Ficha fechada |
+| 8 | Fim do dia | Três linhas no `DIARIO.md`; `git add`, `git commit`, `git push` | Push feito |
+| 9 | Texto | Escrever o parágrafo na dissertação apontando para a tabela gerada | Parágrafo escrito |
+
+Duas exceções:
+
+- **Ideia rápida**: vai em `rascunho/` (ver `rascunho/LEIA-ME.md`), ou roda com `--limite N`, que
+  não grava no registro. Número de rascunho não entra no texto; se a ideia der certo, volte ao passo 1.
+- **Conjunto de teste**: fica fora desse ciclo. Roda uma vez, no fim, só para itens commitados de
+  `protocolo/finais.yaml` (ver PROTOCOLO.md, seção Travas).
+
+`experimentos/E00_exemplo` mostra uma ficha e uma tabela prontas.
 
 ## Validação da migração
 

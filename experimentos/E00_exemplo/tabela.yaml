@@ -1,0 +1,11 @@
+titulo: "Exp. 0 (exemplo) — VMamba-Tiny pré-treinado × EFT-SP 256 px, 20 suportes"
+conjunto: V
+cca: 0
+metricas: [dice_alp, dice_sam]
+incluir_importados: true        # linhas de out/2026; em experimentos novos, deixe false
+referencia: Pré-treinado
+linhas:
+  - nome: Pré-treinado
+    filtro: {modelo: vmamba_tiny, pesos: pre_treinado, aval_estagio: 3, aval_norm: checkpoint, obs: "exp. 15"}
+  - nome: EFT-SP 256, passo 2000
+    filtro: {modelo: vmamba_tiny, pesos: "eft:eft_tiny_2000_v2_20261011T204725195685Z", passo: 2000, aval_estagio: 3, aval_norm: checkpoint, obs: "exp. 15"}

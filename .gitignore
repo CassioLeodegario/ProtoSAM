@@ -12,3 +12,7 @@ pretrained_model
 .ipynb_checkpoints/
 *.pt
 *.pth
+
+# rascunho: só o LEIA-ME vai para o git
+rascunho/*
+!rascunho/LEIA-ME.md

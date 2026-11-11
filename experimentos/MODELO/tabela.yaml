@@ -1,0 +1,11 @@
+# Descrição da tabela do experimento. Formato completo em protovm/tabelas.py.
+titulo: "Exp. N — título curto"
+conjunto: V
+cca: 0
+metricas: [dice_alp, dice_sam]
+referencia: Referência          # opcional: diferença pareada de cada linha contra esta
+linhas:
+  - nome: Referência
+    filtro: {modelo: dinov2_l14, pesos: pre_treinado}
+  - nome: Candidato
+    filtro: {modelo: vmamba_tiny, pesos: "eft:<nome do treino>", passo: 4000, aval_estagio: 2, aval_norm: sem_norm, grade: 32}

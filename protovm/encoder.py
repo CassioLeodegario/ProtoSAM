@@ -80,8 +80,7 @@ def construir_alp(modelo='vmamba_tiny', estagio=3, norm='checkpoint', resolucao=
 
     if modelo.startswith('dinov2'):
         assert modelo in DINOV2, f'Modelo desconhecido: {modelo}'
-        assert not treino, 'O DINOv2 só é usado congelado.'
-        return _construir_dinov2(modelo, resolucao)
+        return _construir_dinov2(modelo, resolucao, treino=treino, pesos=pesos)
 
     variante = modelo.removeprefix('vmamba_')
     assert variante in VARIANTES, f'Modelo desconhecido: {modelo}'
@@ -146,7 +145,7 @@ DINOV2 = {
 }
 
 
-def _construir_dinov2(modelo, resolucao):
+def _construir_dinov2(modelo, resolucao, treino=False, pesos=None):
     import models.grid_proto_fewshot as oficial
     entrada, arquivo, canais = DINOV2[modelo]
     repo_hub = PESOS / 'hub' / 'facebookresearch_dinov2_main'
@@ -169,10 +168,18 @@ def _construir_dinov2(modelo, resolucao):
                 super().get_cls()
 
     cfg = {'which_model': modelo, 'cls_name': 'grid_proto', 'proto_grid_size': 8, 'lora': 0,
-           'align': False, 'debug': False, 'use_coco_init': False, 'use_pos_enc': False,
+           'align': treino, 'debug': False, 'use_coco_init': False, 'use_pos_enc': False,
            'use_slice_adapter': False, 'adapter_layers': 3, 'dinov2_loss': False}
     alp = ALPDinoLocal(image_size=resolucao, pretrained_path=None, cfg=cfg)
     assert getattr(alp.encoder, 'embed_dim', canais) == canais, (modelo, alp.encoder.embed_dim)
     alp.descricao = {'modelo': modelo, 'resolucao': resolucao,
                      'grade': alp.config['feature_hw'][0], 'estagio': None, 'norm': None, 'pesos_sha256': None}
-    return alp.to('cuda', dtype=torch.float32).eval().requires_grad_(False)
+    if pesos is not None:  # checkpoint de um ajuste auto-supervisionado (scripts/treinar_regioes.py)
+        salvo = torch.load(pesos, map_location='cpu', weights_only=True)
+        alp.load_state_dict(salvo['modelo'], strict=True)
+        alp.descricao['passo_eft'] = int(salvo['passo'])
+        alp.descricao['pesos_arquivo'] = str(Path(pesos).resolve())
+        alp.descricao['pesos_sha256'] = sha256(pesos)
+        del salvo
+    alp = alp.to('cuda', dtype=torch.float32)
+    return alp.train().requires_grad_(True) if treino else alp.eval().requires_grad_(False)

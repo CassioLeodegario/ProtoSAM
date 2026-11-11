@@ -83,12 +83,20 @@ class Datasets:
         return a
 
 
-def construir_protosam(alp):
+def construir_protosam(alp, cca=False):
+    """SAM-H com os prompts do protocolo.
+
+    cca=True liga a análise de componentes conexos do código oficial: só o componente mais confiante
+    da máscara do ALP gera prompts e o SAM devolve uma máscara única. Não muda a máscara do ALP
+    medida em avaliar(), que é sempre a bruta.
+    """
     from models.ProtoSAM import ProtoSAM, ALPNetWrapper
+    cfg = dict(CFG_SAM, use_cca=bool(cca))
     wrapper = ALPNetWrapper(alp)
     protosam = ProtoSAM(coarse_segmentation_model=wrapper, alpnet_image_size=alp.descricao['resolucao'],
-                        sam_pretrained_path=str(RAIZ / 'pretrained_model' / 'sam_vit_h.pth'), **CFG_SAM)
+                        sam_pretrained_path=str(RAIZ / 'pretrained_model' / 'sam_vit_h.pth'), **cfg)
     protosam = protosam.to('cuda', dtype=torch.float32).eval().requires_grad_(False)
+    protosam.cfg_sam = cfg  # o que avaliar() grava no config.json e no registro
     return wrapper, protosam
 
 
@@ -106,14 +114,16 @@ def avaliar(alp, conjunto='V', suporte='S00', rotulo=None, metadados=None, datas
     """
     from models.ProtoSAM import ALPNetInput
     git_inicio = git_commit()
-    if conjunto in protocolo.TRAVADOS:
-        protocolo.conferir_final(protocolo.item_final(final, git_inicio), alp.descricao)
+    item = protocolo.item_final(final, git_inicio) if conjunto in protocolo.TRAVADOS else None
     fixar_numerica()
     semear(42)
     if alp.descricao['modelo'].startswith('vmamba'):
         exigir_kernel_cuda()
     datasets = datasets or Datasets()
     wrapper, protosam = wrapper_sam or construir_protosam(alp)
+    cfg_sam = getattr(protosam, 'cfg_sam', CFG_SAM)
+    if item is not None:
+        protocolo.conferir_final(item, dict(alp.descricao, cca=cfg_sam['use_cca']))
     metadados = dict(metadados or {})
 
     nome_suporte = protocolo.suporte(suporte)
@@ -128,7 +138,7 @@ def avaliar(alp, conjunto='V', suporte='S00', rotulo=None, metadados=None, datas
     sup_mask = sup['label'].unsqueeze(0).cuda().float()
 
     config = {'conjunto': conjunto, 'suporte': suporte, 'suporte_nome': nome_suporte, 'n': len(queries),
-              'alp': alp.descricao, 'sam': dict(CFG_SAM, modelo='sam_vit_h'),
+              'alp': alp.descricao, 'sam': dict(cfg_sam, modelo='sam_vit_h'),
               'alp_inferencia': {'isval': True, 'val_wsize': 2}, 'metadados': metadados,
               'final': final, 'limite': limite}
     if pasta is None:
@@ -190,7 +200,8 @@ def avaliar(alp, conjunto='V', suporte='S00', rotulo=None, metadados=None, datas
     registro.adicionar({
         'origem': str(pasta.relative_to(RAIZ).as_posix()), 'estado': estado,
         'modelo': d['modelo'], 'aval_estagio': d.get('estagio'), 'aval_norm': d.get('norm'),
-        'aval_resolucao': d['resolucao'], 'grade': d['grade'], 'conjunto': conjunto, 'suporte': suporte,
+        'aval_resolucao': d['resolucao'], 'grade': d['grade'], 'cca': int(cfg_sam['use_cca']),
+        'conjunto': conjunto, 'suporte': suporte,
         'n': len(linhas), 'dice_alp': resumo['ALP']['Dice'], 'dice_sam': resumo['SAM']['Dice'],
         'gpu': ambiente()['gpu'], 'commit': (git_inicio['commit'] or '')[:10], **metadados,
     })

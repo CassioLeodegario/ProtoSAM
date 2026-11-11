@@ -8,15 +8,16 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
-from protovm import protocolo  # noqa: E402
+from protovm import protocolo, registro  # noqa: E402
 from protovm.util import estado_do_codigo, git_commit, nome_do_treino  # noqa: E402
 
 LIMPO = {'commit': 'abc123', 'codigo_alterado': False}
 SUJO = {'commit': 'abc123', 'codigo_alterado': True}
 ITEM = {'nome': 'final_x', 'modelo': 'vmamba_tiny', 'estagio': 2, 'norm': 'sem_norm', 'resolucao': 672,
-        'grade': 32, 'pesos_sha256': 'f' * 64}
+        'grade': 32, 'cca': False, 'pesos_sha256': 'f' * 64}
+# O que avaliar() entrega à trava: alp.descricao mais a opção de CCA usada no SAM.
 DESCRICAO = {'modelo': 'vmamba_tiny', 'estagio': 2, 'norm': 'sem_norm', 'resolucao': 672, 'grade': 32,
-             'lado_features': 42, 'canais': 384, 'passo_eft': 4000, 'pesos_sha256': 'f' * 64}
+             'lado_features': 42, 'canais': 384, 'passo_eft': 4000, 'pesos_sha256': 'f' * 64, 'cca': False}
 
 
 def recusa(funcao, *args):
@@ -40,14 +41,16 @@ def test_teste_exige_item_final_commitado():
 def test_configuracao_avaliada_tem_de_ser_a_escrita():
     protocolo.conferir_final(ITEM, DESCRICAO)
     for campo, outro in (('modelo', 'vmamba_small'), ('estagio', 3), ('norm', 'checkpoint'),
-                         ('resolucao', 512), ('grade', 42), ('pesos_sha256', 'e' * 64)):
+                         ('resolucao', 512), ('grade', 42), ('cca', True), ('pesos_sha256', 'e' * 64)):
         assert campo in recusa(protocolo.conferir_final, ITEM, dict(DESCRICAO, **{campo: outro}))
-    # Campo omitido no item vale None: sem o hash, nenhum checkpoint fica autorizado.
-    sem_hash = {k: v for k, v in ITEM.items() if k != 'pesos_sha256'}
-    assert 'pesos_sha256' in recusa(protocolo.conferir_final, sem_hash, DESCRICAO)
+    # Campo omitido no item vale None: sem o hash, nenhum checkpoint fica autorizado; sem a CCA
+    # declarada, nenhuma das duas opções fica autorizada.
+    for campo in ('pesos_sha256', 'cca'):
+        incompleto = {k: v for k, v in ITEM.items() if k != campo}
+        assert campo in recusa(protocolo.conferir_final, incompleto, DESCRICAO)
     # DINOv2: estágio, norma e pesos nulos dos dois lados.
-    dino = {'nome': 'dino', 'modelo': 'dinov2_l14', 'resolucao': 672, 'grade': 48}
-    protocolo.conferir_final(dino, {'modelo': 'dinov2_l14', 'resolucao': 672, 'grade': 48,
+    dino = {'nome': 'dino', 'modelo': 'dinov2_l14', 'resolucao': 672, 'grade': 48, 'cca': True}
+    protocolo.conferir_final(dino, {'modelo': 'dinov2_l14', 'resolucao': 672, 'grade': 48, 'cca': True,
                                     'estagio': None, 'norm': None, 'pesos_sha256': None})
 
 
@@ -64,6 +67,14 @@ def test_estado_da_linha_do_registro():
     assert estado_do_codigo(LIMPO, dict(LIMPO, commit='def456')) == 'rascunho'  # commit trocado no meio
     sem_git = {'commit': None, 'codigo_alterado': True}
     assert estado_do_codigo(sem_git, sem_git) == 'rascunho'
+
+
+def test_registro_tem_o_cabecalho_e_os_valores_esperados():
+    assert registro.cabecalho() == registro.COLUNAS, 'falta rodar uma migração do registro'
+    linhas = registro.ler()
+    assert [l['id'] for l in linhas] == [f'R{i:04d}' for i in range(1, len(linhas) + 1)], 'ids fora de ordem'
+    for l in linhas:
+        assert l['estado'] in registro.ESTADOS and l['cca'] in ('0', '1') and l['conjunto'] in ('V', 'T'), l['id']
 
 
 def test_git_responde_neste_repositorio():

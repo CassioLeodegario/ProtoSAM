@@ -32,8 +32,12 @@ para conclusões, reporte também a média nos 20.
 ## Inferência
 
 - Dataset e pré-processamento oficiais (`get_polyp_dataset`, `ResizeLongestSide(1024)`), canvas 1024×1024.
-- ALP: `isval=True`, `val_wsize=2`, proto_grid 8. Grade de features 32 para VMamba (kernel 4×4), 48 para DINOv2-L a 672.
+- ALP: `isval=True`, `val_wsize=2`, proto_grid 8. Grade de features 32 para VMamba (kernel 4×4), 48 para DINOv2 a 672.
+  `--grade` troca a grade do VMamba (por exemplo 42, o mapa nativo do penúltimo estágio a 672).
 - SAM-H: 1 ponto de confiança + centróide + caixa por componente (`point_mode=both`, `use_bbox=True`), sem CCA, sem pontos negativos.
+- `--cca` liga a análise de componentes conexos do código oficial (`do_cca=True` no `run_protosam.sh`): só o
+  componente mais confiante da máscara do ALP gera prompts e o SAM devolve uma máscara única. Vale para o
+  caminho do SAM; `dice_alp` continua sendo a máscara bruta do ALP. A coluna `cca` do registro diz qual foi usada.
 - FP32; `allow_tf32` desligado em matmul e ligado em cuDNN; sementes 42 na avaliação e 1234 no treino.
 - VMamba sempre com o kernel CUDA `selective_scan_cuda` (o fallback em PyTorch é recusado).
 
@@ -44,7 +48,7 @@ Dice, IoU, precisão e recall por imagem no canvas 1024 (inclui o padding), depo
 
 ## Comparabilidade
 
-- Só compare linhas com o mesmo `conjunto` e o mesmo `suporte`.
+- Só compare linhas com o mesmo `conjunto`, o mesmo `suporte` e a mesma `cca`.
 - A mesma configuração pode variar alguns milésimos entre GPUs/drivers; o SAM às vezes escolhe outro componente
   e muda muito uma imagem isolada. Séries de uma ablação devem rodar na mesma GPU (coluna `gpu`).
 - Linhas `estado=importado` vêm do ProtoSAM-repro (out/2026). Linhas `novo` vêm do protovm com o código
@@ -55,7 +59,7 @@ Dice, IoU, precisão e recall por imagem no canvas 1024 (inclui o padding), depo
 Regras conferidas pelo código, não por quem roda. `tests/test_travas.py` mostra cada uma.
 
 - **Conjunto de teste**: `--conjunto T` só roda com `--final <nome>`, um item de `protocolo/finais.yaml`
-  já commitado e igual à configuração avaliada (modelo, estágio, norma, resolução, grade e hash do checkpoint).
+  já commitado e igual à configuração avaliada (modelo, estágio, norma, resolução, grade, CCA e hash do checkpoint).
 - **Código sem commit**: alteração em `protovm/`, `models/`, `dataloaders/`, `util/`, `scripts/`, `protocolo/`
   ou `configs/` faz a linha entrar no registro como `rascunho`.
 - **Entrada**: toda avaliação compara a imagem do suporte K1, como ela chega ao encoder, com as estatísticas

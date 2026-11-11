@@ -51,6 +51,11 @@ bash scripts/ligar_dados.sh ~/cassio_pereira       # pasta com ProtoSAM/ e polyp
 python scripts/checar.py                           # código oficial, travas e números de referência
 ```
 
+Os pesos do DINOv2 ficam em `pretrained_model/hub/checkpoints/` (`dinov2_vitl14_pretrain.pth`,
+`dinov2_vitb14_pretrain.pth`, `dinov2_vits14_pretrain.pth`) e vêm de
+`https://dl.fbaipublicfiles.com/dinov2/dinov2_vits14/dinov2_vits14_pretrain.pth` (troque `vits14` por
+`vitb14` ou `vitl14`). O código do hub fica em `pretrained_model/hub/facebookresearch_dinov2_main`.
+
 ## Fluxo de trabalho
 
 ```bash

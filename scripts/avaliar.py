@@ -7,8 +7,12 @@ Exemplos:
     python scripts/avaliar.py --treino runs/<pasta> --passos 1000 2000 3000 --resolucao 512
     # 20 suportes
     python scripts/avaliar.py --treino runs/<pasta> --passos 2000 --suportes todos
-    # DINOv2-L (referência)
+    # DINOv2-L (referência); dinov2_b14 e dinov2_s14 também existem
     python scripts/avaliar.py --modelo dinov2_l14
+    # Com a CCA oficial ligada no SAM (coluna cca=1 no registro)
+    python scripts/avaliar.py --modelo dinov2_l14 --cca
+    # Penúltimo estágio do VMamba com o mapa nativo de 42 em vez de 32
+    python scripts/avaliar.py --modelo vmamba_tiny --estagio 2 --norm sem_norm --grade 42
     # Checkpoint avulso (ex.: os do ProtoSAM-repro), informando como foi treinado
     python scripts/avaliar.py --modelo vmamba_tiny --pesos <...>/checkpoint_2000.pt --treino-desc 3 checkpoint 256
     # Ensaio rápido: só as 10 primeiras imagens, fora do registro
@@ -32,7 +36,8 @@ from protovm.encoder import construir_alp  # noqa: E402
 from protovm.util import git_commit, ler_json, nome_do_treino  # noqa: E402
 
 p = argparse.ArgumentParser()
-p.add_argument('--modelo', default=None, help='vmamba_tiny|vmamba_small|vmamba_base|dinov2_l14 (sem --treino)')
+p.add_argument('--modelo', default=None,
+               help='vmamba_tiny|vmamba_small|vmamba_base|dinov2_s14|dinov2_b14|dinov2_l14 (sem --treino)')
 p.add_argument('--treino', default=None, help='pasta runs/<...> de um treino EFT')
 p.add_argument('--passos', type=int, nargs='*', default=[], help='checkpoints do treino a avaliar')
 p.add_argument('--pesos', default=None, help='checkpoint avulso (chave "modelo"), com --modelo')
@@ -41,6 +46,8 @@ p.add_argument('--treino-desc', nargs=3, metavar=('ESTAGIO', 'NORM', 'RESOLUCAO'
 p.add_argument('--estagio', type=int, default=None)
 p.add_argument('--norm', default=None)
 p.add_argument('--resolucao', type=int, default=None)
+p.add_argument('--grade', type=int, default=None, help='lado do mapa entregue ao ALP no VMamba (padrão 32)')
+p.add_argument('--cca', action='store_true', help='liga a análise de componentes conexos oficial no SAM')
 p.add_argument('--conjunto', default='V', choices=['V', 'T'])
 p.add_argument('--final', default=None, help='item de protocolo/finais.yaml; obrigatório com --conjunto T')
 p.add_argument('--suportes', nargs='*', default=['S00'], help="ids (S00..S19) ou 'todos'")
@@ -79,18 +86,21 @@ def principal(a):
     estagio = a.estagio or padrao[0]
     norm = a.norm or padrao[1]
     resolucao = a.resolucao or padrao[2]
+    assert a.grade is None or not modelo.startswith('dinov2'), 'No DINOv2 a grade é resolução // 14.'
+    grade = a.grade or (cfg.get('grade', 32) if a.treino else 32)
+    variacao = (f'_g{grade}' if a.grade else '') + ('_cca' if a.cca else '')
     datasets = Datasets()
     sam = None
     for caminho, passo in alvos:
-        alp = construir_alp(modelo, estagio, norm, resolucao, pesos=caminho)
+        alp = construir_alp(modelo, estagio, norm, resolucao, grade=grade, pesos=caminho)
         # O SAM é o mesmo para todos os checkpoints: só troca o ALP dentro do wrapper.
         if sam is None:
-            sam = construir_protosam(alp)
+            sam = construir_protosam(alp, cca=a.cca)
         else:
             sam[0].model = alp
         treino_curto = base['pesos'].removeprefix('eft:').replace('/', '__')[-64:]
         for s in suportes:
-            rotulo = f"{modelo}_{treino_curto}_{passo or 'pre'}_r{resolucao}"
+            rotulo = f"{modelo}_{treino_curto}_{passo or 'pre'}_r{resolucao}{variacao}"
             avaliar(alp, a.conjunto, s, rotulo=rotulo, datasets=datasets, wrapper_sam=sam,
                     salvar_mascaras=not a.sem_mascaras, final=a.final, limite=a.limite,
                     metadados=dict(base, passo=passo, obs=a.obs))

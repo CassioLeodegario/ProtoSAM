@@ -12,14 +12,24 @@ ARQUIVO = RAIZ / 'resultados' / 'registro.csv'
 COLUNAS = [
     'id', 'data', 'estado',
     'modelo', 'pesos', 'passo', 'treino_estagio', 'treino_norm', 'treino_resolucao',
-    'aval_estagio', 'aval_norm', 'aval_resolucao', 'grade',
+    'aval_estagio', 'aval_norm', 'aval_resolucao', 'grade', 'cca',
     'conjunto', 'suporte', 'n', 'dice_alp', 'dice_sam',
     'gpu', 'commit', 'origem', 'obs',
 ]
+ESTADOS = ('novo', 'rascunho', 'importado')
 # estado: 'novo' (gerado por protovm com o código commitado), 'rascunho' (gerado com alteração
 #         sem commit; não entra em tabela), 'importado' (ProtoSAM-repro, out/2026)
 # pesos:  'pre_treinado' ou 'eft:<nome do run de treino>'; o hash do arquivo fica no config.json do run
+# cca:    1 se o SAM rodou com a análise de componentes conexos oficial; 0 caso contrário
 # conjunto: 'V' (145 validação), 'T' (100 teste Kvasir)
+#
+# Coluna nova: acrescente em COLUNAS e regrave o arquivo com um script em migracao/ (ver
+# registro_coluna_cca.py). adicionar() recusa gravar se o cabeçalho do arquivo não for COLUNAS.
+
+
+def cabecalho():
+    with ARQUIVO.open(encoding='utf-8', newline='') as f:
+        return next(csv.reader(f))
 
 
 def ler():
@@ -32,6 +42,8 @@ def ler():
 def adicionar(linha):
     extras = set(linha) - set(COLUNAS)
     assert not extras, f'Colunas desconhecidas no registro: {extras}'
+    assert not ARQUIVO.exists() or cabecalho() == COLUNAS, \
+        'O cabeçalho de resultados/registro.csv não é o de registro.COLUNAS; falta rodar uma migração.'
     linhas = ler()
     linha = {c: linha.get(c, '') for c in COLUNAS}
     linha['id'] = linha['id'] or f'R{len(linhas) + 1:04d}'
@@ -53,6 +65,6 @@ def tabela():
     """registro como DataFrame com tipos numéricos."""
     import pandas as pd
     df = pd.read_csv(ARQUIVO, dtype=str).fillna('')
-    for c in ('dice_alp', 'dice_sam', 'n', 'passo', 'aval_resolucao', 'treino_resolucao', 'grade'):
+    for c in ('dice_alp', 'dice_sam', 'n', 'passo', 'aval_resolucao', 'treino_resolucao', 'grade', 'cca'):
         df[c] = pd.to_numeric(df[c], errors='coerce')
     return df

@@ -57,7 +57,7 @@ def ids_suportes():
 FINAIS = RAIZ / 'protocolo' / 'finais.yaml'
 REFERENCIAS = RAIZ / 'protocolo' / 'referencias_v1.json'
 TRAVADOS = ('T',)  # conjuntos que só rodam para uma configuração final já commitada
-CAMPOS_FINAL = ('modelo', 'estagio', 'norm', 'resolucao', 'grade', 'pesos_sha256')
+CAMPOS_FINAL = ('modelo', 'estagio', 'norm', 'resolucao', 'grade', 'cca', 'pesos_sha256')
 
 
 class Trava(RuntimeError):
@@ -97,7 +97,9 @@ def item_final(final, git, itens=None):
 def conferir_final(item, descricao):
     """A configuração avaliada tem de ser exatamente a escrita em finais.yaml.
 
-    descricao é alp.descricao. Campo ausente no item vale None (caso do DINOv2 em estagio e norm).
+    descricao é alp.descricao mais 'cca' (a opção do SAM usada). Campo ausente no item vale None:
+    passa onde a avaliação também tem None (estágio e norma do DINOv2, hash de modelo pré-treinado)
+    e é recusado nos demais.
     """
     diferencas = [f'{c}: finais.yaml tem {item.get(c)!r}, a avaliação tem {descricao.get(c)!r}'
                   for c in CAMPOS_FINAL if item.get(c) != descricao.get(c)]

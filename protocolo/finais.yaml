@@ -5,8 +5,9 @@
 # item não existir, se houver alteração sem commit ou se a configuração avaliada for diferente
 # da que está escrita. A data do commit mostra que a escolha veio antes do resultado.
 #
-# Campos (todos conferidos): modelo, estagio, norm, resolucao, grade, pesos_sha256.
+# Campos (todos conferidos): modelo, estagio, norm, resolucao, grade, cca, pesos_sha256.
 # No DINOv2, estagio e norm ficam nulos. Em modelo pré-treinado, pesos_sha256 fica nulo.
+# cca é true ou false e tem de ser escrito sempre.
 # O hash de um checkpoint sai de `sha256sum <arquivo>` ou do config.json de um run de avaliação.
 #
 # Exemplo:
@@ -16,6 +17,7 @@
 #     norm: sem_norm
 #     resolucao: 672
 #     grade: 32
+#     cca: false
 #     pesos_sha256: 0123abcd...
 #
 #   - nome: dinov2_l14_referencia
@@ -24,6 +26,7 @@
 #     norm: null
 #     resolucao: 672
 #     grade: 48
+#     cca: false
 #     pesos_sha256: null
 
 []

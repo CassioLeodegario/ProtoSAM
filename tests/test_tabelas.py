@@ -60,6 +60,11 @@ def test_tabela_em_markdown():
     assert '| A | 2 | 0,450 ± 0,071 | — | — |' in texto, texto
     assert '| B | 3 | 0,733 ± 0,153 | +0,200 [' in texto and '| 2/2 |' in texto, texto
     assert 'referência' in recusa(tabelas.gerar, dict(spec, referencia='Z'), LINHAS)
+    # Uma linha pode fixar a própria CCA: a mesma configuração com a opção desligada e ligada.
+    par = {'titulo': 't', 'referencia': 'sem', 'metricas': ['dice_sam'],
+           'linhas': [{'nome': 'sem', 'cca': 0, 'filtro': {'modelo': 'a'}}, {'nome': 'com', 'cca': 1, 'filtro': {'modelo': 'a'}}]}
+    texto = tabelas.gerar(par, LINHAS)
+    assert 'CCA indicada em cada linha' in texto and '| com | 1 | 0,100 ± 0,000 | -0,400 [' in texto, texto
 
 
 def test_exemplo_do_repositorio_esta_atualizado():

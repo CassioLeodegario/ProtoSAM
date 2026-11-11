@@ -1,0 +1,11 @@
+titulo: "Exp. 1 — VMamba-Tiny (EFT com regiões do SAM, passo 4000) com a CCA desligada e ligada"
+conjunto: V
+metricas: [dice_alp, dice_sam]
+referencia: CCA desligada
+linhas:
+  - nome: CCA desligada
+    cca: 0
+    filtro: {modelo: vmamba_tiny, pesos: "eft:eft_SAM_vs_SP256_1231_20261021T194500705194Z/treino_SAM", passo: 4000, aval_estagio: 2, aval_norm: sem_norm, grade: 32}
+  - nome: CCA ligada
+    cca: 1
+    filtro: {modelo: vmamba_tiny, pesos: "eft:eft_SAM_vs_SP256_1231_20261021T194500705194Z/treino_SAM", passo: 4000, aval_estagio: 2, aval_norm: sem_norm, grade: 32}

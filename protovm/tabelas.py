@@ -4,7 +4,7 @@ Uma tabela é descrita por um YAML (ver experimentos/MODELO/tabela.yaml):
 
     titulo: ...
     conjunto: V                 # só linhas deste conjunto
-    cca: 0                      # e desta opção do SAM
+    cca: 0                      # e desta opção do SAM (uma linha pode trazer a sua própria `cca`)
     metricas: [dice_alp, dice_sam]
     incluir_importados: false   # true aceita linhas de out/2026 (estado=importado)
     referencia: <nome>          # opcional: diferença pareada de cada linha contra esta
@@ -81,16 +81,21 @@ def gerar(spec, linhas=None):
     for item in spec['linhas']:
         if item['nome'] in dados:
             raise TabelaInvalida(f"Nome repetido: {item['nome']}")
-        dados[item['nome']] = selecionar(linhas, item['filtro'], conjunto, cca, spec.get('incluir_importados', False))
+        dados[item['nome']] = selecionar(linhas, item['filtro'], conjunto, item.get('cca', cca),
+                                         spec.get('incluir_importados', False))
     ref = spec.get('referencia')
     if ref and ref not in dados:
         raise TabelaInvalida(f"A referência '{ref}' não é uma das linhas.")
 
+    if any('cca' in item for item in spec['linhas']):
+        descricao_cca = 'CCA indicada em cada linha'
+    else:
+        descricao_cca = 'CCA ligada' if str(cca) == '1' else 'CCA desligada'
     cab = ['Configuração', 'Suportes'] + [f'{m} (média ± dp)' for m in metricas]
     if ref:
         cab += [f'Δ {m} vs. {ref} [IC 95%]' for m in metricas] + ['Suportes em que ganha']
     saida = [f"# {spec['titulo']}", '',
-             f"Conjunto {conjunto}, CCA {'ligada' if str(cca) == '1' else 'desligada'}. "
+             f"Conjunto {conjunto}, {descricao_cca}. "
              f"Gerado de resultados/registro.csv; não edite à mão.", '',
              '| ' + ' | '.join(cab) + ' |', '|' + '---|' * len(cab)]
     for nome, por_suporte in dados.items():

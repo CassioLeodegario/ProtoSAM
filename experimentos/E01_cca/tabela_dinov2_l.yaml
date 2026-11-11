@@ -1,0 +1,12 @@
+# A geração junta linhas com cca 0 e 1, então cada linha da tabela fixa a sua na própria chave `cca`.
+titulo: "Exp. 1 — DINOv2-L com a CCA desligada e ligada (20 suportes, validação)"
+conjunto: V
+metricas: [dice_alp, dice_sam]
+referencia: CCA desligada
+linhas:
+  - nome: CCA desligada
+    cca: 0
+    filtro: {modelo: dinov2_l14, pesos: pre_treinado, aval_resolucao: 672}
+  - nome: CCA ligada
+    cca: 1
+    filtro: {modelo: dinov2_l14, pesos: pre_treinado, aval_resolucao: 672}

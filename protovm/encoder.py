@@ -149,13 +149,13 @@ def _construir_dinov2(modelo, resolucao, treino=False, pesos=None):
     import models.grid_proto_fewshot as oficial
     entrada, arquivo, canais = DINOV2[modelo]
     repo_hub = PESOS / 'hub' / 'facebookresearch_dinov2_main'
-    pesos = PESOS / 'hub' / 'checkpoints' / arquivo
+    pre_treinado = PESOS / 'hub' / 'checkpoints' / arquivo
 
     class ALPDinoLocal(oficial.FewShotSeg):
         """Só troca o download pelo carregamento local; o resto é o oficial."""
         def get_encoder(self):
             self.encoder = torch.hub.load(str(repo_hub), entrada, source='local', pretrained=False)
-            self.encoder.load_state_dict(torch.load(pesos, map_location='cpu', weights_only=True), strict=True)
+            self.encoder.load_state_dict(torch.load(pre_treinado, map_location='cpu', weights_only=True), strict=True)
             lado = max(self.image_size // 14, oficial.DEFAULT_FEATURE_SIZE)
             self.config['feature_hw'] = [lado, lado]
 

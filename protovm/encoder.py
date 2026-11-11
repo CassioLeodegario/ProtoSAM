@@ -12,11 +12,13 @@ Resolução, estágio, normalização e grade são parâmetros:
                'ln_unitaria' -> LayerNorm sem parâmetros (escala 1, viés 0)
     grade      lado do mapa de features entregue ao ALP (sempre interpolado)
 """
+from pathlib import Path
+
 import torch
 import torch.nn.functional as F
 
 from protovm import RAIZ
-from protovm.util import semear
+from protovm.util import semear, sha256
 
 VARIANTES = {
     'tiny': {'depths': [2, 2, 5, 2], 'dims': 96, 'drop_path_rate': 0.2},
@@ -110,12 +112,15 @@ def construir_alp(modelo='vmamba_tiny', estagio=3, norm='checkpoint', resolucao=
     alp = ALPVMamba(image_size=resolucao, pretrained_path=None, cfg=cfg)
     assert type(alp).forward is FewShotSeg.forward and type(alp).alignLoss is FewShotSeg.alignLoss
     alp.descricao = {'modelo': modelo, 'estagio': estagio, 'norm': norm, 'resolucao': resolucao,
-                     'grade': grade, 'lado_features': lado, 'canais': canais}
+                     'grade': grade, 'lado_features': lado, 'canais': canais, 'pesos_sha256': None}
 
     if pesos is not None:
         salvo = torch.load(pesos, map_location='cpu', weights_only=True)
         alp.load_state_dict(salvo['modelo'], strict=True)
         alp.descricao['passo_eft'] = int(salvo['passo'])
+        # Identifica o arquivo avaliado: o nome da pasta sozinho não distingue dois checkpoints.
+        alp.descricao['pesos_arquivo'] = str(Path(pesos).resolve())
+        alp.descricao['pesos_sha256'] = sha256(pesos)
         del salvo
     alp = alp.to('cuda', dtype=torch.float32)
 
@@ -150,5 +155,5 @@ def _construir_dinov2(resolucao):
            'use_slice_adapter': False, 'adapter_layers': 3, 'dinov2_loss': False}
     alp = ALPDinoLocal(image_size=resolucao, pretrained_path=None, cfg=cfg)
     alp.descricao = {'modelo': 'dinov2_l14', 'resolucao': resolucao,
-                     'grade': alp.config['feature_hw'][0], 'estagio': None, 'norm': None}
+                     'grade': alp.config['feature_hw'][0], 'estagio': None, 'norm': None, 'pesos_sha256': None}
     return alp.to('cuda', dtype=torch.float32).eval().requires_grad_(False)

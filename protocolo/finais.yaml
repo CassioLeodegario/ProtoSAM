@@ -1,0 +1,29 @@
+# Configurações autorizadas a rodar no conjunto de teste (T).
+#
+# Regra: a configuração é escolhida na validação (V), escrita aqui e commitada. Só depois ela roda
+# em T, com `python scripts/avaliar.py ... --conjunto T --final <nome>`. O avaliador recusa se o
+# item não existir, se houver alteração sem commit ou se a configuração avaliada for diferente
+# da que está escrita. A data do commit mostra que a escolha veio antes do resultado.
+#
+# Campos (todos conferidos): modelo, estagio, norm, resolucao, grade, pesos_sha256.
+# No DINOv2, estagio e norm ficam nulos. Em modelo pré-treinado, pesos_sha256 fica nulo.
+# O hash de um checkpoint sai de `sha256sum <arquivo>` ou do config.json de um run de avaliação.
+#
+# Exemplo:
+#   - nome: vmamba_tiny_final
+#     modelo: vmamba_tiny
+#     estagio: 2
+#     norm: sem_norm
+#     resolucao: 672
+#     grade: 32
+#     pesos_sha256: 0123abcd...
+#
+#   - nome: dinov2_l14_referencia
+#     modelo: dinov2_l14
+#     estagio: null
+#     norm: null
+#     resolucao: 672
+#     grade: 48
+#     pesos_sha256: null
+
+[]

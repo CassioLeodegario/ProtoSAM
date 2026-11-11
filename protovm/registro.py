@@ -16,8 +16,9 @@ COLUNAS = [
     'conjunto', 'suporte', 'n', 'dice_alp', 'dice_sam',
     'gpu', 'commit', 'origem', 'obs',
 ]
-# estado: 'novo' (gerado por protovm), 'importado' (ProtoSAM-repro, out/2026)
-# pesos:  'pre_treinado' ou 'eft:<nome do run de treino>'
+# estado: 'novo' (gerado por protovm com o código commitado), 'rascunho' (gerado com alteração
+#         sem commit; não entra em tabela), 'importado' (ProtoSAM-repro, out/2026)
+# pesos:  'pre_treinado' ou 'eft:<nome do run de treino>'; o hash do arquivo fica no config.json do run
 # conjunto: 'V' (145 validação), 'T' (100 teste Kvasir)
 
 

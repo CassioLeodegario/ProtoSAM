@@ -58,13 +58,42 @@ def fixar_numerica():
     torch.use_deterministic_algorithms(False)
 
 
+# Pastas que definem o que um número significa. Alteração sem commit em qualquer uma marca a avaliação.
+CODIGO = ('protovm', 'models', 'dataloaders', 'util', 'scripts', 'protocolo', 'configs')
+
+
 def git_commit():
-    """Commit atual e se há alterações não commitadas no código."""
+    """Commit atual e se há alterações não commitadas em código, protocolo ou configs.
+
+    Se o git não responder, o código conta como alterado: não dá para provar que está commitado.
+    """
     def git(*args):
-        r = subprocess.run(['git', '-C', str(RAIZ), *args], capture_output=True, text=True)
+        try:
+            r = subprocess.run(['git', '-C', str(RAIZ), *args], capture_output=True, text=True)
+        except FileNotFoundError:
+            return None
         return r.stdout.strip() if r.returncode == 0 else None
-    status = git('status', '--porcelain', '--', 'protovm', 'models', 'dataloaders', 'util', 'scripts')
-    return {'commit': git('rev-parse', 'HEAD'), 'codigo_alterado': bool(status)}
+    commit = git('rev-parse', 'HEAD')
+    status = git('status', '--porcelain', '--', *CODIGO)
+    return {'commit': commit, 'codigo_alterado': not commit or status is None or bool(status)}
+
+
+def estado_do_codigo(antes, depois):
+    """Estado de uma linha do registro: 'novo' se o código ficou commitado e igual do início ao
+    fim da avaliação (antes e depois vêm de git_commit()); 'rascunho' em qualquer outro caso."""
+    limpo = (bool(antes['commit']) and antes['commit'] == depois['commit']
+             and not antes['codigo_alterado'] and not depois['codigo_alterado'])
+    return 'novo' if limpo else 'rascunho'
+
+
+def nome_do_treino(checkpoint):
+    """Nome do treino de um checkpoint avulso: a pasta do arquivo, contada a partir de
+    reproducao/ ou runs/ quando houver (ex.: 'eft_SAM_vs_SP256_x/treino_SAM')."""
+    partes = Path(checkpoint).parent.parts
+    for i in range(len(partes) - 1, -1, -1):
+        if partes[i] in ('reproducao', 'runs') and i + 1 < len(partes):
+            return '/'.join(partes[i + 1:])
+    return partes[-1]
 
 
 def ambiente():

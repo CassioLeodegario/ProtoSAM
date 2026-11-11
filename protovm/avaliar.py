@@ -18,7 +18,8 @@ import torch
 from PIL import Image
 
 from protovm import RAIZ, protocolo, registro
-from protovm.util import agora, ambiente, fixar_numerica, git_commit, gravar_json, ler_json, semear
+from protovm.util import (agora, ambiente, estado_do_codigo, fixar_numerica, git_commit, gravar_json,
+                          ler_json, semear)
 
 CFG_SAM = {'image_size': [1024, 1024], 'num_points_for_sam': 1, 'use_points': True, 'use_bbox': True,
            'use_mask': False, 'debug': False, 'use_cca': False, 'point_mode': 'both',
@@ -45,8 +46,20 @@ def exigir_kernel_cuda():
     vmamba.selective_scan_torch = recusar
 
 
+def estatisticas_da_entrada(imagem):
+    """Resumo de uma imagem (3, H, W) como ela chega ao encoder; ver protocolo.diferencas_da_entrada."""
+    x = imagem.float()
+    return {'media': float(x.mean()), 'desvio': float(x.std()), 'minimo': float(x.min()),
+            'maximo': float(x.max()), 'fracao_zeros': float((x == 0).float().mean()),
+            'media_por_canal': [float(v) for v in x.mean(dim=(1, 2))]}
+
+
 class Datasets:
-    """Datasets oficiais carregados uma vez; indexação por nome de arquivo."""
+    """Datasets oficiais carregados uma vez; indexação por nome de arquivo.
+
+    Ao carregar, confere a imagem do suporte K1 contra as estatísticas registradas: se o
+    pré-processamento mudou, nenhuma avaliação começa.
+    """
 
     def __init__(self):
         from dataloaders.PolypDataset import get_polyp_dataset
@@ -55,6 +68,11 @@ class Datasets:
         self.treino, self.teste = get_polyp_dataset(image_size=(1024, 1024), sam_trans=ResizeLongestSide(1024))
         self.indice_treino = {Path(p).name: i for i, p in enumerate(self.treino.images)}
         self.indice_teste = {Path(p).name: i for i, p in enumerate(self.teste.images)}
+        k1 = self.amostra(protocolo.carregar()['suporte_k1'], 'V')
+        divergencias = protocolo.diferencas_da_entrada(estatisticas_da_entrada(k1['image']))
+        if divergencias:
+            raise protocolo.Trava('A imagem do suporte K1 não chega ao encoder como no protocolo '
+                                  '(o pré-processamento mudou?):\n  ' + '\n  '.join(divergencias))
 
     def amostra(self, nome, conjunto):
         if conjunto == 'T':
@@ -75,13 +93,21 @@ def construir_protosam(alp):
 
 
 def avaliar(alp, conjunto='V', suporte='S00', rotulo=None, metadados=None, datasets=None,
-            wrapper_sam=None, salvar_mascaras=True, pasta=None):
+            wrapper_sam=None, salvar_mascaras=True, pasta=None, final=None, limite=None):
     """Avalia um modelo já construído. Retorna a pasta do run e grava uma linha no registro.
 
     rotulo: nome curto do run (vai para o nome da pasta).
     metadados: campos extras para o registro (ex.: pesos, passo, treino_resolucao).
+    final: item de protocolo/finais.yaml; obrigatório nos conjuntos travados (T).
+    limite: avalia só as N primeiras imagens (ensaio ou teste). Não entra no registro.
+
+    A linha entra como 'novo' se o código estava commitado; com alteração sem commit entra
+    como 'rascunho' e não vai para tabela.
     """
     from models.ProtoSAM import ALPNetInput
+    git_inicio = git_commit()
+    if conjunto in protocolo.TRAVADOS:
+        protocolo.conferir_final(protocolo.item_final(final, git_inicio), alp.descricao)
     fixar_numerica()
     semear(42)
     if alp.descricao['modelo'].startswith('vmamba'):
@@ -93,6 +119,8 @@ def avaliar(alp, conjunto='V', suporte='S00', rotulo=None, metadados=None, datas
     nome_suporte = protocolo.suporte(suporte)
     queries = protocolo.nomes(conjunto)
     assert nome_suporte not in queries
+    if limite:
+        queries = queries[:limite]
     sup = datasets.amostra(nome_suporte, 'V')
     if nome_suporte == protocolo.carregar()['suporte_k1']:
         assert int((sup['label'] > .5).sum()) == protocolo.carregar()['suporte_k1_pixels_fg_canvas1024']
@@ -101,11 +129,13 @@ def avaliar(alp, conjunto='V', suporte='S00', rotulo=None, metadados=None, datas
 
     config = {'conjunto': conjunto, 'suporte': suporte, 'suporte_nome': nome_suporte, 'n': len(queries),
               'alp': alp.descricao, 'sam': dict(CFG_SAM, modelo='sam_vit_h'),
-              'alp_inferencia': {'isval': True, 'val_wsize': 2}, 'metadados': metadados}
+              'alp_inferencia': {'isval': True, 'val_wsize': 2}, 'metadados': metadados,
+              'final': final, 'limite': limite}
     if pasta is None:
-        pasta = RAIZ / 'runs' / f"{agora()}_aval_{rotulo or alp.descricao['modelo']}_{conjunto}_{suporte}"
+        sufixo = f'_n{limite}' if limite else ''
+        pasta = RAIZ / 'runs' / f"{agora()}_aval_{rotulo or alp.descricao['modelo']}_{conjunto}_{suporte}{sufixo}"
         pasta.mkdir(parents=True, exist_ok=False)
-        gravar_json(pasta / 'config.json', dict(config, git=git_commit(), ambiente=ambiente()))
+        gravar_json(pasta / 'config.json', dict(config, git=git_inicio, ambiente=ambiente()))
     pasta = Path(pasta)
     assert {k: v for k, v in ler_json(pasta / 'config.json').items() if k in config} == config, 'Config mudou.'
     (pasta / 'por_imagem').mkdir(exist_ok=True)
@@ -152,12 +182,18 @@ def avaliar(alp, conjunto='V', suporte='S00', rotulo=None, metadados=None, datas
     gravar_json(pasta / 'resumo.json', resumo)
     print(json.dumps(resumo, indent=2), flush=True)
 
+    if limite:
+        print(f'Ensaio com {len(linhas)} imagens: fora do registro.', flush=True)
+        return pasta
+    estado = estado_do_codigo(git_inicio, git_commit())
     d = alp.descricao
     registro.adicionar({
-        'origem': str(pasta.relative_to(RAIZ).as_posix()), 'estado': 'novo',
+        'origem': str(pasta.relative_to(RAIZ).as_posix()), 'estado': estado,
         'modelo': d['modelo'], 'aval_estagio': d.get('estagio'), 'aval_norm': d.get('norm'),
         'aval_resolucao': d['resolucao'], 'grade': d['grade'], 'conjunto': conjunto, 'suporte': suporte,
         'n': len(linhas), 'dice_alp': resumo['ALP']['Dice'], 'dice_sam': resumo['SAM']['Dice'],
-        'gpu': ambiente()['gpu'], 'commit': (git_commit()['commit'] or '')[:10], **metadados,
+        'gpu': ambiente()['gpu'], 'commit': (git_inicio['commit'] or '')[:10], **metadados,
     })
+    if estado == 'rascunho':
+        print('Código com alteração sem commit: a linha entrou no registro como rascunho.', flush=True)
     return pasta

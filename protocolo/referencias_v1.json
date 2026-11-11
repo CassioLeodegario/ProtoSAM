@@ -1,0 +1,60 @@
+{
+  "descricao": "Valores de referência do protocolo de pólipos v1. A conferência da entrada roda em toda avaliação (protovm.avaliar.Datasets); as avaliações curtas rodam em tests/test_referencias.py.",
+  "entrada_k1": {
+    "imagem": "cju3xtufwiv9c0818djsc4cqd.png",
+    "como": "amostra do dataset oficial no canvas 1024 (ResizeLongestSide, normalização e padding com zeros), medida na VM em 2026-11-10 com o código do commit 111d069",
+    "media": -0.248434,
+    "desvio": 1.01823,
+    "minimo": -2.117904,
+    "maximo": 2.631093,
+    "fracao_zeros": 0.138672,
+    "media_por_canal": [0.233829, -0.467185, -0.511948],
+    "tolerancia": 0.005,
+    "tolerancia_extremos": 0.05
+  },
+  "avaliacoes": {
+    "origem": "Dice por imagem das 10 primeiras imagens de V nas avaliações completas R0084, R0085 e R0086 (código do commit f23c8f8, RTX 5090 Laptop GPU)",
+    "conjunto": "V",
+    "suporte": "S00",
+    "imagens": ["111.png", "122.png", "125.png", "13.png", "142.png", "169.png", "18.png", "186.png", "196.png", "198.png"],
+    "tolerancia_media": 0.002,
+    "casos": [
+      {
+        "nome": "vmamba_tiny_eft256_passo2000",
+        "registro": "R0084",
+        "modelo": "vmamba_tiny",
+        "estagio": 3,
+        "norm": "checkpoint",
+        "resolucao": 672,
+        "checkpoint": "eft_tiny_2000_v2_20261011T204725195685Z/checkpoint_2000.pt",
+        "checkpoint_sha256": "0a9b10b54d44321bacbdc15a5bb61e61aee5143aecf03a4a357176fa5b253d64",
+        "alp": [0.5601825186071736, 0.017464437898389997, 0.23240824708271815, 0.307668428249381, 0.5326474652544151, 0.3145753138217343, 0.5157755084405451, 0.7415889855298569, 0.7413674115323291, 0.8818081712172121],
+        "sam": [0.7383312880051845, 0.016165584985090336, 0.31902807363918184, 0.3178106574702414, 0.9707679566030379, 0.3703416339298111, 0.3363290251477808, 0.9582379661255678, 0.9321722904680454, 0.9211793528765735]
+      },
+      {
+        "nome": "dinov2_l14",
+        "registro": "R0085",
+        "modelo": "dinov2_l14",
+        "estagio": null,
+        "norm": null,
+        "resolucao": 672,
+        "checkpoint": null,
+        "checkpoint_sha256": null,
+        "alp": [0.7564926350510129, 0.5301088219979277, 0.7285174464792722, 0.02424431882321272, 0.5872184583840268, 0.7740784037265418, 0.6753686467266262, 0.8758008420281896, 0.8046959756160562, 0.8606574125788391],
+        "sam": [0.9432252897523792, 0.574522886593715, 0.8950127877237851, 0.029398376136993785, 0.8996097775493607, 0.8698591880530323, 0.8171383164451972, 0.9493024719415405, 0.9230697933079989, 0.8610201521593926]
+      },
+      {
+        "nome": "vmamba_tiny_regioes_sam_passo4000_penultima",
+        "registro": "R0086",
+        "modelo": "vmamba_tiny",
+        "estagio": 2,
+        "norm": "sem_norm",
+        "resolucao": 672,
+        "checkpoint": "eft_SAM_vs_SP256_1231_20261021T194500705194Z/treino_SAM/checkpoint_4000.pt",
+        "checkpoint_sha256": "11bca98aad7f3b15c8b2d7f64fd8d1e563b7e7ff506c377ef210ba399485eb8a",
+        "alp": [0.7236327421161948, 0.2965112835396553, 0.3249109656562786, 0.4206885140794821, 0.6304926649650902, 0.35808556316947515, 0.5068161005661006, 0.8198130521190913, 0.8630385418412911, 0.7719339112493968],
+        "sam": [0.8698740061613385, 0.23561138230741754, 0.5804550964356405, 0.7485706612192412, 0.9233082706766917, 0.3924847231933846, 0.7051804480492894, 0.8420208500400962, 0.9384294244243434, 0.8019868964534966]
+      }
+    ]
+  }
+}

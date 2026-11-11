@@ -47,4 +47,20 @@ Dice, IoU, precisão e recall por imagem no canvas 1024 (inclui o padding), depo
 - Só compare linhas com o mesmo `conjunto` e o mesmo `suporte`.
 - A mesma configuração pode variar alguns milésimos entre GPUs/drivers; o SAM às vezes escolhe outro componente
   e muda muito uma imagem isolada. Séries de uma ablação devem rodar na mesma GPU (coluna `gpu`).
-- Linhas `estado=importado` vêm do ProtoSAM-repro (out/2026). Linhas `novo` vêm do protovm.
+- Linhas `estado=importado` vêm do ProtoSAM-repro (out/2026). Linhas `novo` vêm do protovm com o código
+  commitado. Linhas `rascunho` foram geradas com alteração sem commit e não entram em tabela.
+
+## Travas
+
+Regras conferidas pelo código, não por quem roda. `tests/test_travas.py` mostra cada uma.
+
+- **Conjunto de teste**: `--conjunto T` só roda com `--final <nome>`, um item de `protocolo/finais.yaml`
+  já commitado e igual à configuração avaliada (modelo, estágio, norma, resolução, grade e hash do checkpoint).
+- **Código sem commit**: alteração em `protovm/`, `models/`, `dataloaders/`, `util/`, `scripts/`, `protocolo/`
+  ou `configs/` faz a linha entrar no registro como `rascunho`.
+- **Entrada**: toda avaliação compara a imagem do suporte K1, como ela chega ao encoder, com as estatísticas
+  de `protocolo/referencias_v1.json`. Se o pré-processamento mudar, a avaliação não começa.
+- **Números de referência**: `python scripts/checar.py` reavalia três configurações nas 10 primeiras imagens
+  de V e compara com as avaliações completas R0084 a R0086 (tolerância de 0,002 na média).
+- **Ensaio**: `--limite N` avalia só as N primeiras imagens e não grava no registro.
+- **Checkpoint**: o caminho e o SHA-256 do arquivo avaliado ficam no `config.json` do run.

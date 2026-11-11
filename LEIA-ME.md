@@ -13,13 +13,14 @@ protovm/            código nosso, uma cópia só
   eft_treino.py     laço de treino EFT-SP (retomável)
   avaliar.py        ALP + SAM-H em V ou T, um suporte por chamada
   registro.py       resultados/registro.csv
-  protocolo.py      conjuntos e suportes congelados
+  protocolo.py      conjuntos e suportes congelados; travas (ver PROTOCOLO.md)
 configs/eft/        um YAML por experimento de treino (herdam de _base.yaml)
-scripts/            preparar_dados.py, treinar_eft.py, avaliar.py, ligar_dados.sh
-protocolo/          polipos_v1.json (nomes dos arquivos de V, T, pool e suportes)
+scripts/            preparar_dados.py, treinar_eft.py, avaliar.py, checar.py, ligar_dados.sh
+protocolo/          polipos_v1.json (nomes dos arquivos de V, T, pool e suportes),
+                    finais.yaml (configurações autorizadas no teste), referencias_v1.json
 resultados/         registro.csv — uma linha por avaliação
 notebooks/          só análise: leem o registro e as pastas de runs/
-tests/              verificações automáticas (código oficial intacto)
+tests/              verificações automáticas (código oficial intacto, travas, números de referência)
 migracao/           scripts usados uma vez para trazer o ProtoSAM-repro
 runs/               saídas (fora do git)
 dados_eft/          caches de episódios (fora do git)
@@ -40,19 +41,21 @@ conda install -c conda-forge git -y
 conda install -c nvidia cuda-toolkit=12.8 -y
 export TORCH_CUDA_ARCH_LIST="12.0" MAMBA_FORCE_BUILD=TRUE
 pip install mamba-ssm==2.3.1 --no-build-isolation      # demora; rode num screen
-python -c "import selective_scan_cuda; print('kernel ok')"
+python -c "import torch, selective_scan_cuda; print('kernel ok')"   # o torch tem de vir antes
 ```
 
 Dados e pesos (uma vez, depois de clonar):
 
 ```bash
 bash scripts/ligar_dados.sh ~/cassio_pereira       # pasta com ProtoSAM/ e polyp_raw/
-python tests/test_oficial_intacto.py
+python scripts/checar.py                           # código oficial, travas e números de referência
 ```
 
 ## Fluxo de trabalho
 
 ```bash
+# 0. checagem, antes de cada série de avaliações e depois de mexer no código (2 min de GPU)
+python scripts/checar.py
 # 1. dados (CPU, uma vez por resolução)
 python scripts/preparar_dados.py --resolucao 512 --superpixels-em 256
 # 2. treino (num screen)

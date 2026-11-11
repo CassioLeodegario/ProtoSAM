@@ -9,10 +9,12 @@ Exemplos:
     python scripts/avaliar.py --treino runs/<pasta> --passos 2000 --suportes todos
     # DINOv2-L (referência)
     python scripts/avaliar.py --modelo dinov2_l14
-    # Teste final (T): só quando a configuração estiver decidida
-    python scripts/avaliar.py --treino runs/<pasta> --passos 2000 --conjunto T
     # Checkpoint avulso (ex.: os do ProtoSAM-repro), informando como foi treinado
     python scripts/avaliar.py --modelo vmamba_tiny --pesos <...>/checkpoint_2000.pt --treino-desc 3 checkpoint 256
+    # Ensaio rápido: só as 10 primeiras imagens, fora do registro
+    python scripts/avaliar.py --modelo vmamba_tiny --limite 10
+    # Teste final (T): só para um item já commitado de protocolo/finais.yaml
+    python scripts/avaliar.py --treino runs/<pasta> --passos 2000 --conjunto T --final <nome> --suportes todos
 
 Sem --estagio/--norm, usa os do treino (3/checkpoint no pré-treinado). Sem --resolucao, avalia a 672.
 """
@@ -27,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from protovm import RAIZ, protocolo  # noqa: E402
 from protovm.avaliar import Datasets, avaliar, construir_protosam  # noqa: E402
 from protovm.encoder import construir_alp  # noqa: E402
-from protovm.util import ler_json  # noqa: E402
+from protovm.util import git_commit, ler_json, nome_do_treino  # noqa: E402
 
 p = argparse.ArgumentParser()
 p.add_argument('--modelo', default=None, help='vmamba_tiny|vmamba_small|vmamba_base|dinov2_l14 (sem --treino)')
@@ -40,54 +42,64 @@ p.add_argument('--estagio', type=int, default=None)
 p.add_argument('--norm', default=None)
 p.add_argument('--resolucao', type=int, default=None)
 p.add_argument('--conjunto', default='V', choices=['V', 'T'])
+p.add_argument('--final', default=None, help='item de protocolo/finais.yaml; obrigatório com --conjunto T')
 p.add_argument('--suportes', nargs='*', default=['S00'], help="ids (S00..S19) ou 'todos'")
+p.add_argument('--limite', type=int, default=None, help='só as N primeiras imagens; não entra no registro')
 p.add_argument('--obs', default='')
 p.add_argument('--sem-mascaras', action='store_true', help='não salvar PNGs das máscaras')
-a = p.parse_args()
 
-if a.conjunto == 'T':
-    print('ATENÇÃO: conjunto T é o teste final. Confirme que a configuração já foi escolhida em V.')
-suportes = protocolo.ids_suportes() if a.suportes == ['todos'] else a.suportes
 
-if a.treino:
-    treino = (RAIZ / a.treino).resolve()
-    cfg = ler_json(treino / 'config.json')
-    assert a.passos, 'Informe --passos com o treino.'
-    alvos = [(treino / f'checkpoint_{n:04d}.pt', n) for n in a.passos]
-    modelo = cfg['modelo']
-    base = {'pesos': f'eft:{treino.name}', 'treino_estagio': cfg['estagio'], 'treino_norm': cfg['norm'],
-            'treino_resolucao': cfg['resolucao']}
-    padrao = (cfg['estagio'], cfg['norm'], 672)  # resolução de avaliação padrão do protocolo
-elif a.pesos:
-    assert a.modelo and a.treino_desc, 'Checkpoint avulso exige --modelo e --treino-desc.'
-    caminho = Path(a.pesos).resolve()
-    passo = int(torch.load(caminho, map_location='cpu', weights_only=True)['passo'])
-    alvos, modelo = [(caminho, passo)], a.modelo
-    est, nrm, res = a.treino_desc
-    base = {'pesos': f'eft:{caminho.parent.name}', 'treino_estagio': int(est), 'treino_norm': nrm,
-            'treino_resolucao': int(res)}
-    padrao = (int(est), nrm, 672)
-else:
-    assert a.modelo, 'Informe --modelo ou --treino.'
-    alvos, modelo, base, padrao = [(None, '')], a.modelo, {'pesos': 'pre_treinado'}, (3, 'checkpoint', 672)
+def principal(a):
+    if a.conjunto in protocolo.TRAVADOS:
+        protocolo.item_final(a.final, git_commit())  # recusa antes de carregar os modelos
+    suportes = protocolo.ids_suportes() if a.suportes == ['todos'] else a.suportes
 
-estagio = a.estagio or padrao[0]
-norm = a.norm or padrao[1]
-resolucao = a.resolucao or padrao[2]
-datasets = Datasets()
-sam = None
-for caminho, passo in alvos:
-    alp = construir_alp(modelo, estagio, norm, resolucao, pesos=caminho)
-    # O SAM é o mesmo para todos os checkpoints: só troca o ALP dentro do wrapper.
-    if sam is None:
-        sam = construir_protosam(alp)
+    if a.treino:
+        treino = (RAIZ / a.treino).resolve()
+        cfg = ler_json(treino / 'config.json')
+        assert a.passos, 'Informe --passos com o treino.'
+        alvos = [(treino / f'checkpoint_{n:04d}.pt', n) for n in a.passos]
+        modelo = cfg['modelo']
+        base = {'pesos': f'eft:{treino.name}', 'treino_estagio': cfg['estagio'], 'treino_norm': cfg['norm'],
+                'treino_resolucao': cfg['resolucao']}
+        padrao = (cfg['estagio'], cfg['norm'], 672)  # resolução de avaliação padrão do protocolo
+    elif a.pesos:
+        assert a.modelo and a.treino_desc, 'Checkpoint avulso exige --modelo e --treino-desc.'
+        caminho = Path(a.pesos).resolve()
+        passo = int(torch.load(caminho, map_location='cpu', weights_only=True)['passo'])
+        alvos, modelo = [(caminho, passo)], a.modelo
+        est, nrm, res = a.treino_desc
+        base = {'pesos': f'eft:{nome_do_treino(caminho)}', 'treino_estagio': int(est), 'treino_norm': nrm,
+                'treino_resolucao': int(res)}
+        padrao = (int(est), nrm, 672)
     else:
-        sam[0].model = alp
-    for s in suportes:
-        rotulo = f"{modelo}_{base['pesos'].removeprefix('eft:')[:40]}_{passo or 'pre'}_r{resolucao}"
-        avaliar(alp, a.conjunto, s, rotulo=rotulo, datasets=datasets, wrapper_sam=sam,
-                salvar_mascaras=not a.sem_mascaras,
-                metadados=dict(base, passo=passo, obs=a.obs))
-    del alp
-    gc.collect()
-    torch.cuda.empty_cache()
+        assert a.modelo, 'Informe --modelo ou --treino.'
+        alvos, modelo, base, padrao = [(None, '')], a.modelo, {'pesos': 'pre_treinado'}, (3, 'checkpoint', 672)
+
+    estagio = a.estagio or padrao[0]
+    norm = a.norm or padrao[1]
+    resolucao = a.resolucao or padrao[2]
+    datasets = Datasets()
+    sam = None
+    for caminho, passo in alvos:
+        alp = construir_alp(modelo, estagio, norm, resolucao, pesos=caminho)
+        # O SAM é o mesmo para todos os checkpoints: só troca o ALP dentro do wrapper.
+        if sam is None:
+            sam = construir_protosam(alp)
+        else:
+            sam[0].model = alp
+        treino_curto = base['pesos'].removeprefix('eft:').replace('/', '__')[-64:]
+        for s in suportes:
+            rotulo = f"{modelo}_{treino_curto}_{passo or 'pre'}_r{resolucao}"
+            avaliar(alp, a.conjunto, s, rotulo=rotulo, datasets=datasets, wrapper_sam=sam,
+                    salvar_mascaras=not a.sem_mascaras, final=a.final, limite=a.limite,
+                    metadados=dict(base, passo=passo, obs=a.obs))
+        del alp
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
+try:
+    principal(p.parse_args())
+except protocolo.Trava as erro:
+    sys.exit(f'TRAVA: {erro}')

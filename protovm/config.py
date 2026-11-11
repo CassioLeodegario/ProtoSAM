@@ -12,7 +12,8 @@ def carregar(caminho):
         caminho = (Path.cwd() / caminho) if (Path.cwd() / caminho).exists() else RAIZ / caminho
     cfg = yaml.safe_load(caminho.read_text(encoding='utf-8')) or {}
     pai = cfg.pop('base', None)
+    nome = cfg.get('nome', caminho.stem)  # o nome é do próprio arquivo, nunca herdado do pai
     if pai:
         cfg = {**carregar(caminho.parent / pai), **cfg}
-    cfg.setdefault('nome', caminho.stem)
+    cfg['nome'] = nome
     return cfg

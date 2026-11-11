@@ -1,0 +1,7 @@
+titulo: "Exp. 2a — DINOv2-L nos 20 suportes (validação)"
+conjunto: V
+cca: 0
+metricas: [dice_alp, dice_sam]
+linhas:
+  - nome: DINOv2-L
+    filtro: {modelo: dinov2_l14, pesos: pre_treinado, aval_resolucao: 672}

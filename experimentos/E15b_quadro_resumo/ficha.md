@@ -19,6 +19,11 @@
 - **Adendo de 12/11/2026** (escrito antes de rodar, depois de ver o quadro sem CCA): a pedido, a linha
   VMamba-T com Felzenszwalb (treino_SP256, passo 1000) é medida também com CCA ligada nos 20 suportes,
   para o quadro ficar completo. Mais 20 avaliações (máximo 104). Não muda nenhuma regra de decisão.
+- **Segundo adendo de 12/11/2026** (escrito antes de rodar): o quadro deve trazer o melhor caso do
+  VMamba-T com Felzenszwalb. Pelo histórico de outubro é o treino `eft_ultima672_10000_wd001` de 18/10,
+  passo 500, lido na penúltima camada (0,532 ± 0,143 nos 20 suportes, código antigo). Ele é remedido
+  pelo código novo nos 20 suportes, com CCA desligada e ligada. O passo não é reescolhido: vale o de
+  outubro. Mais 40 avaliações (máximo 144).
 
 ## Resultado
 

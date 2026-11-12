@@ -16,6 +16,9 @@
   A CCA não é avaliada nos modelos adaptados com Felzenszwalb: se o quadro mostrar que eles ficam
   muito abaixo dos demais, a linha não muda nenhuma conclusão.
 - **Máximo de execuções**: 84 avaliações (cerca de 4 h 30 de GPU).
+- **Adendo de 12/11/2026** (escrito antes de rodar, depois de ver o quadro sem CCA): a pedido, a linha
+  VMamba-T com Felzenszwalb (treino_SP256, passo 1000) é medida também com CCA ligada nos 20 suportes,
+  para o quadro ficar completo. Mais 20 avaliações (máximo 104). Não muda nenhuma regra de decisão.
 
 ## Resultado
 

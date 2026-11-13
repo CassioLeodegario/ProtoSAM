@@ -40,6 +40,22 @@ Escrita em 12/11/2026, antes de qualquer execução. Antecipa o Exp. 12 do plano
 - **Máximo de execuções**: A+B+C: 8 treinos e 42 avaliações (cerca de 10 h de GPU). D: mais 6 treinos
   e 30 avaliações.
 - **Limites conhecidos**: 5 pacientes de validação em RM e 8 em CT; só rins; um fold; uma semente.
+- **Adendo de 13/11/2026** (escrito antes de rodar a rodada D; A, B e a parte de RM de C já lidas, os
+  dois treinos de CT de C ainda rodando). O que foi visto: nenhuma linha cumpre a regra; o pico vem
+  no passo 500 e o Dice cai com mais treino, nas duas modalidades e nos dois tipos de pseudo-máscara;
+  a mais próxima é RM/Felzenszwalb/query deformada no passo 500 (+0,029, 5 de 5 suportes; +0,008 no
+  passo 1000). A entrada alternativa não deu 0,03 em A e sai da rodada. A pedido, a rodada D fica
+  maior que o previsto e vira uma busca de hiperparâmetros, sempre com query deformada, nos quatro
+  pares (RM, CT) × (Felzenszwalb, regiões do SAM), um fator por vez sobre a receita de C:
+  - **D1** lr 3e-6, 2.000 episódios, passos 250, 500, 1000 e 2000 (`*_d1_lr3e6.yaml`);
+  - **D2** lr 1e-5 lido antes do pico: passos 100 e 250 (`*_d2_curto.yaml`; o passo 500 é o de C);
+  - **D3** fatias com rim dentro do ajuste (sem rótulo), passos 250, 500 e 1000 (`*_d3_comrim.yaml`);
+  - **D4** treino direto pela penúltima camada, passos 250, 500 e 1000 (`*_d4_penultima.yaml`).
+  Tudo lido na penúltima camada, CCA desligada. 16 treinos e 48 avaliações (cerca de 7 h de GPU).
+  A regra de decisão não muda; "dois passos consecutivos" vale na grade de passos de cada treino, e
+  em D2 a sequência é 100, 250 e o 500 de C. Com 16 treinos a mais, um par que cumpra a regra por
+  pouco é tratado como candidato e precisa ser repetido com outra semente antes de ser reportado.
+  Leitura na última camada e CCA ficam para depois, só sobre a melhor linha de cada modalidade.
 
 ## Resultado
 

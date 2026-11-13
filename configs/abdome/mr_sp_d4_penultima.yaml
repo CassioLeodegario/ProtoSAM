@@ -1,0 +1,8 @@
+base: _base.yaml
+modalidade: MR
+tipo: SP
+aug: afim
+estagio: 2
+norm: sem_norm
+passos: 1000
+checkpoints: [250, 500, 1000]

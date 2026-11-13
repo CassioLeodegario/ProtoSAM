@@ -1,0 +1,14 @@
+# Exp. 12: a receita que funcionou em pólipos (672 px, encoder inteiro, AdamW lr 1e-5, wd 0,01),
+# com 4.000 episódios. Cada config herda daqui e muda modalidade, pseudo-máscara e aumentação.
+modelo: vmamba_tiny
+estagio: 3
+norm: checkpoint
+grade: 32
+passos: 4000
+lr: 1.0e-5
+weight_decay: 0.01
+semente: 1234
+aug: flip
+excluir: true
+salvar_a_cada: 100
+checkpoints: [500, 1000, 2000, 4000]

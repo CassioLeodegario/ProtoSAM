@@ -56,6 +56,24 @@ Escrita em 12/11/2026, antes de qualquer execução. Antecipa o Exp. 12 do plano
   em D2 a sequência é 100, 250 e o 500 de C. Com 16 treinos a mais, um par que cumpra a regra por
   pouco é tratado como candidato e precisa ser repetido com outra semente antes de ser reportado.
   Leitura na última camada e CCA ficam para depois, só sobre a melhor linha de cada modalidade.
+- **Segundo adendo de 13/11/2026** (escrito antes de rodar e antes de ler a rodada D). A pedido, as
+  ablações feitas com o VMamba-Tiny em pólipos são repetidas no abdome, e entram o VMamba-Small e o
+  VMamba-Base. Um fator por vez sobre a receita de C (query deformada, lr 1e-5, 672, wd 0,01), nos
+  quatro pares (RM, CT) × (Felzenszwalb, regiões do SAM), passos 250, 500 e 1000, penúltima camada:
+  - **E1–E3** resolução de treino 256, 512 e 1024 (`*_e1_res256`, `*_e2_res512`, `*_e3_res1024`);
+    a avaliação continua a 672;
+  - **E4** weight decay 0 (`*_e4_wd0`); **E5** `patch_embed` e estágios 0–1 congelados (`*_e5_congelar`);
+  - **E6** VMamba-Small e **E7** VMamba-Base (`*_e6_small`, `*_e7_base`), comparados com o próprio
+    Small/Base pré-treinado.
+  - **F, sem treino novo**, em RM e CT: Small e Base pré-treinados (última e penúltima camada); Tiny
+    pré-treinado com CCA e com a máscara de maior score do SAM; e os quatro treinos de C no passo 500
+    lidos na última camada, com CCA e com a máscara de maior score.
+  Já cobertas: lr 3e-6 (D1), treino pela penúltima (D4), passos (B, C, D), Felzenszwalb × regiões do
+  SAM (todas). Não repetida: superpixels calculados a 512, porque os superpixels do abdome são os
+  arquivos prontos do conjunto de dados (256 px). 28 treinos e 108 avaliações (cerca de 16 h de GPU).
+  A regra de decisão é a mesma; CCA e máscara de maior score são comparadas com o pré-treinado lido
+  do mesmo jeito. Com tantas linhas, qualquer par que cumpra a regra é candidato e precisa ser
+  repetido com outra semente antes de ser reportado.
 
 ## Resultado
 

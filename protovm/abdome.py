@@ -58,7 +58,8 @@ REGISTRO = RAIZ / 'resultados' / 'abdome.csv'
 COLUNAS = ['id', 'data', 'estado', 'modalidade', 'modelo', 'pesos', 'passo', 'pseudo', 'aug', 'lr', 'excluir',
            'entrada', 'aval_estagio', 'aval_norm', 'cca', 'suporte', 'n',
            'dice_alp_rim_d', 'dice_sam_rim_d', 'dice_alp_rim_e', 'dice_sam_rim_e', 'dice_alp', 'dice_sam',
-           'commit', 'origem', 'obs']
+           'commit', 'origem', 'obs', 'mascara']
+MASCARAS = ('indice0', 'maior_score')  # qual das 3 máscaras do SAM é usada: a primeira (oficial) ou a de maior score
 
 
 # ---------------------------------------------------------------- dados
@@ -108,8 +109,8 @@ def fatia_uint8(mod, pid, z):
     return np.repeat(_em_255(volume(mod, pid), z).round().astype(np.uint8)[..., None], 3, axis=2)
 
 
-def tensor_fatia(mod, pid, z, entrada):
-    """(1, 3, 672, 672) na GPU, normalizado conforme `entrada`."""
+def tensor_fatia(mod, pid, z, entrada, lado=LADO):
+    """(1, 3, lado, lado) na GPU, normalizado conforme `entrada`."""
     v = volume(mod, pid)
     if entrada == 'zscore':
         x = torch.from_numpy((v['img'][z] - v['media']) / v['desvio'])[None, None].repeat(1, 3, 1, 1).cuda()
@@ -118,12 +119,12 @@ def tensor_fatia(mod, pid, z, entrada):
         x = (x - x.new_tensor(MEDIA)[None, :, None, None]) / x.new_tensor(DESVIO)[None, :, None, None]
     else:
         raise ValueError(entrada)
-    return F.interpolate(x.float(), size=(LADO, LADO), mode='bilinear', align_corners=False)
+    return F.interpolate(x.float(), size=(lado, lado), mode='bilinear', align_corners=False)
 
 
-def _mascara_672(m256):
+def _mascara_672(m256, lado=LADO):
     t = torch.from_numpy(np.ascontiguousarray(m256).astype(np.float32))[None, None].cuda()
-    return F.interpolate(t, size=(LADO, LADO), mode='nearest')[0]  # (1, 672, 672)
+    return F.interpolate(t, size=(lado, lado), mode='nearest')[0]  # (1, lado, lado)
 
 
 # ---------------------------------------------------------------- regiões (pseudo-máscaras)
@@ -225,10 +226,10 @@ def montar_plano(mod, tipo, passos, semente, excluir=True):
 
 # ---------------------------------------------------------------- ajuste
 
-def episodio(mod, tipo, entrada, ep, aug, semente_passo):
-    """(suporte, máscara, query, alvo) a 672, na GPU."""
-    s = tensor_fatia(mod, ep['paciente'], ep['fatia'], entrada)
-    fg = _mascara_672(mascara_regiao(mod, tipo, ep))
+def episodio(mod, tipo, entrada, ep, aug, semente_passo, lado=LADO):
+    """(suporte, máscara, query, alvo) a `lado`, na GPU."""
+    s = tensor_fatia(mod, ep['paciente'], ep['fatia'], entrada, lado)
+    fg = _mascara_672(mascara_regiao(mod, tipo, ep), lado)
     if aug == 'afim':
         g = torch.Generator().manual_seed(semente_passo)
         u = torch.rand(6, generator=g).tolist()
@@ -241,7 +242,7 @@ def episodio(mod, tipo, entrada, ep, aug, semente_passo):
         grade = F.affine_grid(theta, list(s.shape), align_corners=False)
         q = F.grid_sample(s, grade, mode='bilinear', padding_mode='border', align_corners=False)
         alvo = F.grid_sample(fg[None], grade, mode='nearest', padding_mode='zeros', align_corners=False)[0]
-        if alvo.sum() >= 64:
+        if alvo.sum() >= 64 * (lado / LADO) ** 2:
             lo, hi = q.min(), q.max()
             q = ((q - lo) / (hi - lo + 1e-6)) ** (0.7 + u[5] * 0.8) * (hi - lo) + lo
             return s, fg, q, alvo.long()
@@ -261,7 +262,12 @@ def treinar(cfg, pasta=None, max_passos=None):
     assert cfg['entrada'] in ENTRADAS
     total = cfg['passos']
     marcos = set(cfg['checkpoints']) | {0}
-    registro_cfg = dict(cfg, resolucao=LADO, loss='CE + alinhamento; pesos 1 e 1', otimizador='AdamW')
+    # Opcionais (Exp. 12E). 'congelar' só entra no config gravado quando usado, para as retomadas antigas valerem.
+    lado = cfg.pop('resolucao', None) or LADO
+    congelar = bool(cfg.pop('congelar', False))
+    registro_cfg = dict(cfg, resolucao=lado, loss='CE + alinhamento; pesos 1 e 1', otimizador='AdamW')
+    if congelar:
+        registro_cfg['congelar'] = 'patch_embed + estágios 0 e 1'
     if pasta is None:
         pasta = RAIZ / 'runs' / f"{agora()}_abdtreino_{cfg['nome']}"
     pasta = Path(pasta)
@@ -278,8 +284,12 @@ def treinar(cfg, pasta=None, max_passos=None):
     assert len(plano) == total
     print('TREINO:', pasta, flush=True)
 
-    alp = construir_alp(cfg['modelo'], cfg.get('estagio') or 3, cfg.get('norm') or 'checkpoint', LADO,
+    alp = construir_alp(cfg['modelo'], cfg.get('estagio') or 3, cfg.get('norm') or 'checkpoint', lado,
                         grade=cfg.get('grade', 32), treino=True, semente=cfg['semente'])
+    if congelar:
+        alp.encoder.patch_embed.requires_grad_(False)
+        for i in (0, 1):
+            alp.encoder.layers[i].requires_grad_(False)
     estado_align = instalar_alinhamento_seguro(alp)
     otimizador = torch.optim.AdamW(alp.parameters(), lr=cfg['lr'], betas=(0.9, 0.999), eps=1e-8,
                                    weight_decay=cfg['weight_decay'])
@@ -316,11 +326,11 @@ def treinar(cfg, pasta=None, max_passos=None):
     with (pasta / f'passos_{time.time_ns()}.jsonl').open('x', encoding='utf-8', buffering=1) as log:
         for n in range(passo + 1, fim + 1):
             ep = plano[n - 1]
-            s, fg, q, alvo = episodio(mod, tipo, cfg['entrada'], ep, cfg['aug'], cfg['semente'] * 100003 + n)
+            s, fg, q, alvo = episodio(mod, tipo, cfg['entrada'], ep, cfg['aug'], cfg['semente'] * 100003 + n, lado)
             otimizador.zero_grad(set_to_none=True)
             estado_align['ultimo'] = None
             logits, alinhamento = alp([[s]], [[fg]], [[1 - fg]], [q], isval=False, val_wsize=2, show_viz=False)[:2]
-            assert tuple(logits.shape) == (1, 2, LADO, LADO) and torch.isfinite(logits).all()
+            assert tuple(logits.shape) == (1, 2, lado, lado) and torch.isfinite(logits).all()
             ce = F.cross_entropy(logits, alvo)
             loss = ce + alinhamento
             assert torch.isfinite(loss)
@@ -362,8 +372,16 @@ def _adicionar(linha):
     if REGISTRO.exists():
         with REGISTRO.open(encoding='utf-8', newline='') as f:
             leitor = csv.DictReader(f)
-            assert leitor.fieldnames == COLUNAS, 'Cabeçalho de resultados/abdome.csv diferente de abdome.COLUNAS.'
+            antigo = leitor.fieldnames
             linhas = list(leitor)
+        if antigo != COLUNAS:  # arquivo anterior à coluna 'mascara': regrava com a coluna vazia
+            assert antigo == COLUNAS[:len(antigo)], 'Cabeçalho de resultados/abdome.csv diferente de abdome.COLUNAS.'
+            tmp = REGISTRO.with_suffix('.tmp')
+            with tmp.open('w', encoding='utf-8', newline='') as f:
+                w = csv.DictWriter(f, fieldnames=COLUNAS)
+                w.writeheader()
+                w.writerows({c: l.get(c, '') for c in COLUNAS} for l in linhas)
+            os.replace(tmp, REGISTRO)
     assert not set(linha) - set(COLUNAS), set(linha) - set(COLUNAS)
     linha = {c: linha.get(c, '') for c in COLUNAS}
     linha['id'] = f'A{len(linhas) + 1:04d}'
@@ -377,6 +395,19 @@ def _adicionar(linha):
         w.writerow(linha)
 
 
+def usar_maior_score(protosam):
+    """Faz o ProtoSAM oficial (que usa sempre a máscara de índice 0) usar a de maior score do SAM."""
+    original = protosam.predictor.predict
+
+    def predict(*a, **k):
+        mask, score, baixa = original(*a, **k)
+        i = int(np.argmax(score))
+        ordem = [i] + [j for j in range(len(score)) if j != i]
+        return mask[ordem], score[ordem], baixa[ordem]
+    protosam.predictor.predict = predict
+    protosam.cfg_sam = dict(protosam.cfg_sam, mascara='maior_score')
+
+
 def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotulo='', registrar=True):
     """Avalia um modelo em todos os suportes da validação de `mod`. sam = construir_protosam(alp, cca)."""
     from models.ProtoSAM import ALPNetInput
@@ -386,9 +417,11 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
     cfg = MODALIDADES[mod]
     wrapper, protosam = sam
     cca = int(protosam.cfg_sam['use_cca'])
+    mascara = protosam.cfg_sam.get('mascara', 'indice0')
     pasta = RAIZ / 'runs' / f'{agora()}_abd_{mod}_{rotulo}'
     pasta.mkdir(parents=True, exist_ok=False)
     gravar_json(pasta / 'config.json', {'modalidade': mod, 'entrada': entrada, 'alp': alp.descricao, 'cca': cca,
+                                        'mascara': mascara,
                                         'fatias_max': fatias_max, 'metadados': metadados, 'git': git_inicio,
                                         'ambiente': ambiente()})
     print('AVALIAÇÃO:', pasta, flush=True)
@@ -438,7 +471,7 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
                 d = alp.descricao
                 _adicionar({'estado': estado_do_codigo(git_inicio, git_commit()), 'modalidade': mod,
                             'modelo': d['modelo'], 'entrada': entrada, 'aval_estagio': d.get('estagio') or '',
-                            'aval_norm': d.get('norm') or '', 'cca': cca, 'suporte': f'P{sup:02d}', 'n': n,
+                            'aval_norm': d.get('norm') or '', 'cca': cca, 'mascara': mascara, 'suporte': f'P{sup:02d}', 'n': n,
                             **{f'dice_{e}_{o}': f'{m[i]:.6f}' for o, m in medias.items()
                                for i, e in enumerate(('alp', 'sam'))},
                             'dice_alp': f'{alp_m:.6f}', 'dice_sam': f'{sam_m:.6f}',
@@ -455,20 +488,20 @@ def resumo():
     """Média e desvio entre suportes de cada configuração, e diferença pareada contra o mesmo modelo
     pré-treinado lido do mesmo jeito (mesma modalidade, entrada, estágio, norm e CCA)."""
     with REGISTRO.open(encoding='utf-8', newline='') as f:
-        linhas = [l for l in csv.DictReader(f) if l['estado'] == 'novo']
-    chaves = ['modalidade', 'modelo', 'entrada', 'aval_estagio', 'aval_norm', 'cca', 'pseudo', 'aug', 'lr',
-              'excluir', 'pesos', 'passo']
+        linhas = [dict(l, mascara=l.get('mascara') or 'indice0') for l in csv.DictReader(f) if l['estado'] == 'novo']
+    chaves = ['modalidade', 'modelo', 'entrada', 'aval_estagio', 'aval_norm', 'cca', 'mascara', 'pseudo', 'aug',
+              'lr', 'excluir', 'pesos', 'passo']
     grupos = {}
     for l in linhas:
         grupos.setdefault(tuple(l[c] for c in chaves), {})[l['suporte']] = l
     saida = []
     for k, g in grupos.items():
-        base = grupos.get(k[:6] + ('', '', '', '', 'pre_treinado', ''), {})
+        base = grupos.get(k[:7] + ('', '', '', '', 'pre_treinado', ''), {})
         alp = [float(l['dice_alp']) for l in g.values()]
         sam = [float(l['dice_sam']) for l in g.values()]
         dif = [float(g[s]['dice_sam']) - float(base[s]['dice_sam']) for s in g if s in base]
-        nome = f"{k[0]} {k[1]} {k[2]} e{k[3] or '-'} cca{k[5]} | " + (
-            'pré-treinado' if k[10] == 'pre_treinado' else f'{k[6]} {k[7]} lr{k[8]} excl{k[9]} passo {k[11]}')
+        nome = f"{k[0]} {k[1]} {k[2]} e{k[3] or '-'} cca{k[5]} {k[6]} | " + (
+            'pré-treinado' if k[11] == 'pre_treinado' else f"{k[11].split('_abdtreino_')[-1]} passo {k[12]}")
         saida.append(f"{nome} | n={len(g)} ALP {np.mean(alp):.3f}±{np.std(alp, ddof=1) if len(alp) > 1 else 0:.3f} "
                      f"SAM {np.mean(sam):.3f}±{np.std(sam, ddof=1) if len(sam) > 1 else 0:.3f}"
                      + (f" | Δ {np.mean(dif):+.3f} ganha {sum(d > 0 for d in dif)}/{len(dif)}" if dif else ''))

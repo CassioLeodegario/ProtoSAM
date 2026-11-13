@@ -1,0 +1,7 @@
+base: _base.yaml
+modalidade: CT
+tipo: SP
+aug: afim
+resolucao: 512
+passos: 1000
+checkpoints: [250, 500, 1000]

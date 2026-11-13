@@ -1,0 +1,7 @@
+base: _base.yaml
+modalidade: CT
+tipo: SAM
+aug: afim
+modelo: vmamba_base
+passos: 1000
+checkpoints: [250, 500, 1000]

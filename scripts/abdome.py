@@ -35,6 +35,7 @@ a.add_argument('--estagio', type=int, default=None)
 a.add_argument('--norm', default=None)
 a.add_argument('--entrada', choices=abdome.ENTRADAS, default=None)
 a.add_argument('--cca', action='store_true')
+a.add_argument('--mascara', choices=abdome.MASCARAS, default='indice0')
 a.add_argument('--fatias-max', type=int, default=8)
 a.add_argument('--suportes', type=int, nargs='*', default=None, help='ensaio: só estes pacientes-suporte')
 a.add_argument('--sem-registro', action='store_true', help='ensaio: não grava em resultados/abdome.csv')
@@ -75,11 +76,14 @@ else:
         alp = construir_alp(modelo, estagio, norm, abdome.LADO, pesos=caminho)
         if sam is None:
             sam = construir_protosam(alp, cca=args.cca)
+            if args.mascara == 'maior_score':
+                abdome.usar_maior_score(sam[1])
         else:
             sam[0].model = alp
         abdome.avaliar(alp, sam, mod, entrada, dict(base, passo=passo, obs=args.obs), fatias_max=args.fatias_max,
                        suportes=args.suportes, registrar=not args.sem_registro,
-                       rotulo=f"{modelo}_{passo or 'pre'}_e{estagio}{'_cca' if args.cca else ''}")
+                       rotulo=f"{modelo}_{passo or 'pre'}_e{estagio}{'_cca' if args.cca else ''}"
+                              f"{'_score' if args.mascara == 'maior_score' else ''}")
         del alp
         gc.collect()
         torch.cuda.empty_cache()

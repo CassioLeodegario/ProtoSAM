@@ -148,4 +148,9 @@ Pela regra, o resultado do abdome para o VMamba-Tiny é **negativo** nas duas mo
 tipos de pseudo-máscara: em 44 treinos, nenhum passo com +0,03 em 4 de 5 suportes por dois passos
 seguidos. O único par que cumpre a regra é RM/regiões do SAM com o VMamba-Base, tratado como
 candidato até a repetição com a segunda semente (terceiro adendo), e com a ressalva de que fica abaixo
-do Tiny sem treino. Resultado da segunda semente: a preencher.
+do Tiny sem treino. 
+
+**Segunda semente (14/11/2026)**, RM/regiões do SAM/VMamba-Base, semente 4321: +0,066 (3/5), +0,086
+(5/5) e +0,082 (4/5) nos passos 250, 500 e 1000. Cumpre a regra a partir do passo 500. O par fica
+confirmado nas duas sementes, com a mesma ressalva: o Base ajustado (0,35) continua abaixo do Tiny
+pré-treinado (0,381).

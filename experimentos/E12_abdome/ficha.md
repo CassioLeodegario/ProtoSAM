@@ -74,11 +74,78 @@ Escrita em 12/11/2026, antes de qualquer execução. Antecipa o Exp. 12 do plano
   A regra de decisão é a mesma; CCA e máscara de maior score são comparadas com o pré-treinado lido
   do mesmo jeito. Com tantas linhas, qualquer par que cumpra a regra é candidato e precisa ser
   repetido com outra semente antes de ser reportado.
+- **Terceiro adendo de 14/11/2026** (escrito depois de ler A–F e antes de rodar a repetição). Um único
+  par cumpre a regra: RM, regiões do SAM, VMamba-Base (E7). Como previsto nos adendos, ele é repetido
+  com outra semente (`configs/abdome/mr_sam_e7_base_s2.yaml`, semente 4321), mesmos passos e mesma
+  leitura. 1 treino e 3 avaliações. O par só é reportado como ganho se a segunda semente também
+  cumprir a regra.
 
 ## Resultado
 
-A preencher.
+Lido em 14/11/2026, de `resultados/abdome.csv` (`scripts/abdome.py resumo`). Dice SAM, média nos 5
+suportes, CCA desligada e penúltima camada, salvo indicação. Δ é a diferença pareada contra o
+pré-treinado lido do mesmo jeito; entre parênteses, suportes em que ganha.
+
+**A. Sem treino.**
+
+| Modelo | RM | CT |
+|---|---|---|
+| VMamba-T, última camada | 0,347 | 0,142 |
+| VMamba-T, penúltima (referência) | 0,381 | 0,215 |
+| VMamba-T, penúltima, outra entrada | 0,390 | 0,199 |
+| VMamba-S, penúltima (última) | 0,388 (0,323) | 0,204 (0,155) |
+| VMamba-B, penúltima (última) | 0,261 (0,263) | 0,176 (0,150) |
+| VMamba-T, penúltima, CCA | 0,418 | 0,261 |
+| VMamba-T, penúltima, máscara de maior score | 0,364 | 0,185 |
+| DINOv2-L | 0,584 | 0,395 |
+
+**B–E. VMamba-T ajustado: melhor passo de cada variação (Δ).**
+
+| Variação | RM Felz. | RM SAM | CT Felz. | CT SAM |
+|---|---|---|---|---|
+| B query espelhada | −0,007 (1/5) | +0,010 (4/5) | −0,004 (3/5) | +0,016 (3/5) |
+| C query deformada | **+0,029 (5/5)** | +0,002 (3/5) | −0,039 (0/5) | −0,005 (3/5) |
+| D1 lr 3e-6 | +0,003 (4/5) | +0,001 (2/5) | −0,009 (2/5) | +0,008 (3/5) |
+| D2 passos 100 e 250 | −0,014 (1/5) | +0,007 (3/5) | −0,022 (1/5) | −0,001 (1/5) |
+| D3 fatias com rim no ajuste | +0,008 (3/5) | −0,001 (2/5) | +0,015 (4/5) | +0,003 (3/5) |
+| D4 treino pela penúltima | +0,008 (4/5) | −0,039 (0/5) | +0,006 (4/5) | +0,018 (4/5) |
+| E1 treino a 256 | +0,024 (5/5) | +0,012 (2/5) | +0,001 (3/5) | −0,016 (2/5) |
+| E2 treino a 512 | −0,016 (1/5) | +0,002 (2/5) | −0,002 (4/5) | +0,011 (3/5) |
+| E3 treino a 1024 | +0,006 (3/5) | −0,004 (3/5) | +0,010 (3/5) | +0,002 (2/5) |
+| E4 weight decay 0 | −0,004 (4/5) | −0,002 (3/5) | −0,018 (2/5) | −0,003 (3/5) |
+| E5 estágios iniciais congelados | +0,010 (4/5) | −0,003 (2/5) | −0,016 (2/5) | +0,004 (3/5) |
+
+Nenhuma linha do VMamba-T cumpre a regra. A mais próxima é RM/Felzenszwalb/query deformada no passo
+500 (0,410; +0,029, 5/5), que cai para +0,008 no passo 1000; o treino a 256 repete o padrão (+0,024
+no passo 500, −0,033 no 1000). O ganho, quando existe, aparece até o passo 500 e some com mais treino.
+
+**E6–E7. Small e Base ajustados (Δ contra o próprio pré-treinado; passos 250 / 500 / 1000).**
+
+| Modelo | RM Felz. | RM SAM | CT Felz. | CT SAM |
+|---|---|---|---|---|
+| Small | −0,093 / −0,068 / −0,029 | −0,060 / −0,048 / −0,081 | −0,105 / −0,099 / −0,031 | +0,007 / −0,006 / −0,031 |
+| Base | −0,096 / −0,055 / +0,015 | **+0,089 / +0,087 / +0,082 (4/5)** | −0,084 / −0,075 / −0,068 | −0,062 / −0,033 / −0,007 |
+
+RM/regiões do SAM/Base cumpre a regra nos três passos (0,351 no passo 250). Ressalva: o Base
+pré-treinado é muito fraco em RM (0,261), e o Base ajustado continua abaixo do Tiny pré-treinado
+(0,381). É uma recuperação de um ponto de partida ruim, não um resultado melhor em valor absoluto.
+
+**F. Treinos de C no passo 500 lidos de outros jeitos (Δ contra o pré-treinado lido igual).**
+
+| Leitura | RM Felz. | RM SAM | CT Felz. | CT SAM |
+|---|---|---|---|---|
+| Última camada | +0,028 (3/5) | +0,025 (3/5) | −0,014 (3/5) | +0,031 (4/5) |
+| CCA | +0,017 (3/5); 0,436 | +0,013 (4/5); 0,432 | −0,019 (1/5); 0,241 | +0,029 (4/5); 0,290 |
+| Máscara de maior score | +0,036 (5/5); 0,400 | +0,022 (4/5); 0,386 | −0,031 (1/5); 0,154 | +0,011 (3/5); 0,197 |
+
+São leituras de um único passo, então não podem cumprir a regra de dois passos. A CCA dá os maiores
+valores absolutos do VMamba-T (RM 0,436; CT 0,290), mas a maior parte vem da própria CCA (pré-treinado
+com CCA: 0,418 e 0,261). A máscara de maior score piora o valor absoluto em todas as linhas.
 
 ## Decisão
 
-A preencher.
+Pela regra, o resultado do abdome para o VMamba-Tiny é **negativo** nas duas modalidades e nos dois
+tipos de pseudo-máscara: em 44 treinos, nenhum passo com +0,03 em 4 de 5 suportes por dois passos
+seguidos. O único par que cumpre a regra é RM/regiões do SAM com o VMamba-Base, tratado como
+candidato até a repetição com a segunda semente (terceiro adendo), e com a ressalva de que fica abaixo
+do Tiny sem treino. Resultado da segunda semente: a preencher.

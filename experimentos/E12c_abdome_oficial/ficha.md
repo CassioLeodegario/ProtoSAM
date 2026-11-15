@@ -36,8 +36,35 @@ Escrita em 15/11/2026, antes de rodar. Decisão do Cássio em 15/11: usar o prot
 
 ## Resultado
 
-A preencher.
+Medido em 15/11/2026 (`runs/E12c_oficial.log`, 18 avaliações, cerca de 7 h). Dice SAM, média ± desvio nos
+5 suportes; Δ é a diferença pareada contra o mesmo modelo pré-treinado, com os suportes em que ganha.
+
+**A. Sem treino**
+
+| Modelo | RM | CT |
+|---|---|---|
+| DINOv2-L | 0,747 ± 0,028 | 0,603 ± 0,090 |
+| VMamba-T | 0,504 ± 0,081 | 0,350 ± 0,082 |
+| VMamba-Base | 0,296 ± 0,079 | não medido |
+
+DINOv2-L em CT com a entrada `zscore`: 0,597 (−0,006). A entrada do CT fica `imagenet`.
+
+**B. Ajustados**
+
+| Par | Passo 500 | Passo 1000 |
+|---|---|---|
+| VMamba-T, RM, regiões do SAM | 0,479 (−0,024; 0/5) | 0,476 (−0,027; 0/5) |
+| VMamba-T, RM, superpixels | 0,504 (0,000; 2/5) | 0,495 (−0,008; 2/5) |
+| VMamba-T, CT, regiões do SAM | 0,348 (−0,001; 3/5) | 0,333 (−0,017; 2/5) |
+| VMamba-T, CT, superpixels | 0,309 (−0,041; 1/5) | 0,306 (−0,044; 1/5) |
+| VMamba-Base, RM, regiões do SAM, semente 1234 | 0,386 (+0,090; 5/5) | 0,374 (+0,079; 5/5) |
+| VMamba-Base, RM, regiões do SAM, semente 4321 | 0,362 (+0,066; 4/5) | 0,397 (+0,101; 5/5) |
+
+As linhas de CT com superpixels foram calculadas a partir das linhas por suporte do log.
 
 ## Decisão
 
-A preencher.
+Nenhum par do VMamba-T cumpre a regra: o resultado negativo do Exp. 12 fica mantido no protocolo oficial,
+nas duas modalidades e nos dois tipos de pseudo-máscara. O VMamba-Base em RM com regiões do SAM cumpre a
+regra nas duas sementes, mas o Base ajustado (0,36 a 0,40) fica abaixo do Tiny pré-treinado (0,504); pela
+ressalva, não conta como ganho útil. O protocolo oficial passa a ser o do abdome daqui em diante.

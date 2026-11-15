@@ -31,8 +31,32 @@ Escrita em 14/11/2026, antes de rodar.
 
 ## Resultado
 
-A preencher.
+Medido em 14-15/11/2026 (`runs/E12b_diag.log`), modelos pré-treinados, 3 suportes, todas as fatias com rim
+(RM 367 fatias, CT 1169). Dice SAM; a primeira coluna é o subconjunto de 8 fatias por paciente, que
+reproduz o protocolo do Exp. 12.
+
+| Modelo, modalidade | Exp. 12 (8 fatias, média por paciente) | todas as fatias | + CCA | + suporte por terça parte (oficial) |
+|---|---|---|---|---|
+| DINOv2-L, RM | 0,553 | 0,574 | 0,646 | 0,738 |
+| DINOv2-L, CT | 0,367 | 0,414 | 0,483 | 0,568 |
+| VMamba-T, RM | 0,364 | 0,377 | 0,412 | 0,507 |
+| VMamba-T, CT | 0,209 | 0,241 | 0,269 | 0,337 |
+
+- Teto da etapa do SAM (prompts tirados da máscara verdadeira): 0,927 em RM e 0,865 em CT. O erro está
+  na máscara do ALP, não no SAM.
+- Por terça parte do rim (DINOv2-L, protocolo oficial): RM 0,691 / 0,819 / 0,714; CT 0,503 / 0,616 / 0,587.
+- Por área do rim na fatia (DINOv2-L, oficial; <100, 100-300, >=300 px): RM 0,000 / 0,304 / 0,785;
+  CT 0,091 / 0,284 / 0,659. As fatias com rim pequeno continuam quase sem acerto em qualquer variante.
+- Sem CCA a área prevista é 1,7 a 2,0 vezes a do rim (DINOv2-L) e 2,4 a 4,1 vezes (VMamba-T); com CCA e
+  suporte por terça parte cai para 1,3 (DINOv2-L) e 1,5 a 2,6 (VMamba-T).
+- Outro rim: sem CCA, 9% a 11% da área prevista pelo DINOv2-L cai no outro rim (13% a 21% no VMamba-T);
+  com CCA, 0% a 1% (DINOv2-L) e 6% a 12% (VMamba-T). A CCA aumenta as fatias com erro total
+  (DINOv2-L: 5% para 11% em RM, 9% para 22% em CT; VMamba-T: até 44%).
 
 ## Decisão
 
-A preencher.
+As três diferenças de protocolo explicam +0,185 (RM) e +0,201 (CT) de Dice SAM no DINOv2-L: suporte por
+terça parte (+0,09), CCA (+0,07) e medir todas as fatias (+0,02 a +0,05). A confusão com o outro rim é
+secundária. O Dice baixo do Exp. 12 vinha do protocolo, não do DINOv2. Em 15/11 o Cássio decidiu usar o
+protocolo oficial; a remedida fica no Exp. 12c. O que ainda separa estes números do artigo não foi medido
+aqui (pacientes de suporte e de query diferentes, normalização da entrada em CT, fatias com rim pequeno).

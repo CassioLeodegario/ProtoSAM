@@ -58,7 +58,12 @@ REGISTRO = RAIZ / 'resultados' / 'abdome.csv'
 COLUNAS = ['id', 'data', 'estado', 'modalidade', 'modelo', 'pesos', 'passo', 'pseudo', 'aug', 'lr', 'excluir',
            'entrada', 'aval_estagio', 'aval_norm', 'cca', 'suporte', 'n',
            'dice_alp_rim_d', 'dice_sam_rim_d', 'dice_alp_rim_e', 'dice_sam_rim_e', 'dice_alp', 'dice_sam',
-           'commit', 'origem', 'obs', 'mascara']
+           'commit', 'origem', 'obs', 'mascara', 'protocolo']
+# protocolo 'e12'     -> suporte = fatia central do rim; até 8 fatias por paciente; Dice por paciente (Exp. 12)
+#           'oficial' -> como validation_protosam.py: CCA ligada, 3 fatias de suporte (1/6, 1/2 e 5/6 do rim) e cada
+#                        fatia de query usa a da sua terça parte; todas as fatias com o rim; média do Dice por fatia
+PROTOCOLOS = ('e12', 'oficial')
+PCTS_SUPORTE = (1 / 6, 1 / 2, 5 / 6)
 MASCARAS = ('indice0', 'maior_score')  # qual das 3 máscaras do SAM é usada: a primeira (oficial) ou a de maior score
 
 
@@ -408,8 +413,18 @@ def usar_maior_score(protosam):
     protosam.cfg_sam = dict(protosam.cfg_sam, mascara='maior_score')
 
 
-def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotulo='', registrar=True):
+def _parte(z, zs):
+    """Terça parte do rim a que a fatia pertence (fórmula de dataloaders/common.py do código oficial)."""
+    z0, z1 = min(zs), max(zs)
+    p = int((z - z0) // ((z1 - z0) / 3)) if z1 > z0 else 0
+    return min(max(p, 0), 2)
+
+
+def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotulo='', registrar=True,
+            protocolo='e12'):
     """Avalia um modelo em todos os suportes da validação de `mod`. sam = construir_protosam(alp, cca)."""
+    assert protocolo in PROTOCOLOS
+    oficial = protocolo == 'oficial'
     from models.ProtoSAM import ALPNetInput
     git_inicio = git_commit()
     fixar_numerica()
@@ -418,11 +433,12 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
     wrapper, protosam = sam
     cca = int(protosam.cfg_sam['use_cca'])
     mascara = protosam.cfg_sam.get('mascara', 'indice0')
+    assert not oficial or cca == 1, "O protocolo 'oficial' exige a CCA ligada."
     pasta = RAIZ / 'runs' / f'{agora()}_abd_{mod}_{rotulo}'
     pasta.mkdir(parents=True, exist_ok=False)
     gravar_json(pasta / 'config.json', {'modalidade': mod, 'entrada': entrada, 'alp': alp.descricao, 'cca': cca,
-                                        'mascara': mascara,
-                                        'fatias_max': fatias_max, 'metadados': metadados, 'git': git_inicio,
+                                        'mascara': mascara, 'protocolo': protocolo,
+                                        'fatias_max': None if oficial else fatias_max, 'metadados': metadados, 'git': git_inicio,
                                         'ambiente': ambiente()})
     print('AVALIAÇÃO:', pasta, flush=True)
     fatias = []
@@ -432,22 +448,24 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
             n = 0
             for orgao, (_, classe) in cfg['orgaos'].items():
                 zs = fatias_com(mod, orgao, sup)
-                z_sup = zs[len(zs) // 2]
-                sup_img = tensor_fatia(mod, sup, z_sup, entrada)
-                sup_mask = _mascara_672(volume(mod, sup)['rotulo'][z_sup] == classe)
-                assert sup_mask.sum() > 0
-                por_paciente = []
+                z_sups = [zs[int(p * len(zs))] for p in PCTS_SUPORTE] if oficial else [zs[len(zs) // 2]]
+                sups = {z: (tensor_fatia(mod, sup, z, entrada), _mascara_672(volume(mod, sup)['rotulo'][z] == classe))
+                        for z in set(z_sups)}
+                assert all(m.sum() > 0 for _, m in sups.values())
+                por_paciente, todas = [], []
                 for pid in cfg['validacao']:
                     if pid == sup:
                         continue
                     zq = fatias_com(mod, orgao, pid)
-                    escolhidas = [zq[i] for i in sorted(set(np.linspace(0, len(zq) - 1, min(len(zq), fatias_max))
-                                                            .round().astype(int).tolist()))]
+                    escolhidas = zq if oficial else [
+                        zq[i] for i in sorted(set(np.linspace(0, len(zq) - 1, min(len(zq), fatias_max))
+                                                  .round().astype(int).tolist()))]
                     dices = []
                     for z in escolhidas:
                         gt = volume(mod, pid)['rotulo'][z] == classe
                         assert gt.any()
                         qry = tensor_fatia(mod, pid, z, entrada)
+                        sup_img, sup_mask = sups[z_sups[_parte(z, zq)] if oficial else z_sups[0]]
 
                         def entrada_alp():
                             return ALPNetInput(support_images=[sup_img], support_labels=[sup_mask], query_images=qry,
@@ -462,7 +480,8 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
                                        'dice_alp': d_alp, 'dice_sam': d_sam})
                         n += 1
                     por_paciente.append(np.mean(dices, axis=0))
-                medias[orgao] = np.mean(por_paciente, axis=0)
+                    todas.extend(dices)
+                medias[orgao] = np.mean(todas if oficial else por_paciente, axis=0)
             alp_m = float(np.mean([m[0] for m in medias.values()]))
             sam_m = float(np.mean([m[1] for m in medias.values()]))
             print(f'{mod} suporte {sup}: ' + ' | '.join(f'{o} ALP={m[0]:.4f} SAM={m[1]:.4f}' for o, m in medias.items())
@@ -471,7 +490,8 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
                 d = alp.descricao
                 _adicionar({'estado': estado_do_codigo(git_inicio, git_commit()), 'modalidade': mod,
                             'modelo': d['modelo'], 'entrada': entrada, 'aval_estagio': d.get('estagio') or '',
-                            'aval_norm': d.get('norm') or '', 'cca': cca, 'mascara': mascara, 'suporte': f'P{sup:02d}', 'n': n,
+                            'aval_norm': d.get('norm') or '', 'cca': cca, 'mascara': mascara,
+                            'protocolo': protocolo, 'suporte': f'P{sup:02d}', 'n': n,
                             **{f'dice_{e}_{o}': f'{m[i]:.6f}' for o, m in medias.items()
                                for i, e in enumerate(('alp', 'sam'))},
                             'dice_alp': f'{alp_m:.6f}', 'dice_sam': f'{sam_m:.6f}',
@@ -486,22 +506,23 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
 
 def resumo():
     """Média e desvio entre suportes de cada configuração, e diferença pareada contra o mesmo modelo
-    pré-treinado lido do mesmo jeito (mesma modalidade, entrada, estágio, norm e CCA)."""
+    pré-treinado lido do mesmo jeito (mesma modalidade, entrada, estágio, norm, CCA, máscara e protocolo)."""
     with REGISTRO.open(encoding='utf-8', newline='') as f:
-        linhas = [dict(l, mascara=l.get('mascara') or 'indice0') for l in csv.DictReader(f) if l['estado'] == 'novo']
-    chaves = ['modalidade', 'modelo', 'entrada', 'aval_estagio', 'aval_norm', 'cca', 'mascara', 'pseudo', 'aug',
-              'lr', 'excluir', 'pesos', 'passo']
+        linhas = [dict(l, mascara=l.get('mascara') or 'indice0', protocolo=l.get('protocolo') or 'e12')
+                  for l in csv.DictReader(f) if l['estado'] == 'novo']
+    chaves = ['modalidade', 'modelo', 'entrada', 'aval_estagio', 'aval_norm', 'cca', 'mascara', 'protocolo', 'pseudo',
+              'aug', 'lr', 'excluir', 'pesos', 'passo']
     grupos = {}
     for l in linhas:
         grupos.setdefault(tuple(l[c] for c in chaves), {})[l['suporte']] = l
     saida = []
     for k, g in grupos.items():
-        base = grupos.get(k[:7] + ('', '', '', '', 'pre_treinado', ''), {})
+        base = grupos.get(k[:8] + ('', '', '', '', 'pre_treinado', ''), {})
         alp = [float(l['dice_alp']) for l in g.values()]
         sam = [float(l['dice_sam']) for l in g.values()]
         dif = [float(g[s]['dice_sam']) - float(base[s]['dice_sam']) for s in g if s in base]
-        nome = f"{k[0]} {k[1]} {k[2]} e{k[3] or '-'} cca{k[5]} {k[6]} | " + (
-            'pré-treinado' if k[11] == 'pre_treinado' else f"{k[11].split('_abdtreino_')[-1]} passo {k[12]}")
+        nome = f"{k[0]} {k[1]} {k[2]} e{k[3] or '-'} cca{k[5]} {k[6]} {k[7]} | " + (
+            'pré-treinado' if k[12] == 'pre_treinado' else f"{k[12].split('_abdtreino_')[-1]} passo {k[13]}")
         saida.append(f"{nome} | n={len(g)} ALP {np.mean(alp):.3f}±{np.std(alp, ddof=1) if len(alp) > 1 else 0:.3f} "
                      f"SAM {np.mean(sam):.3f}±{np.std(sam, ddof=1) if len(sam) > 1 else 0:.3f}"
                      + (f" | Δ {np.mean(dif):+.3f} ganha {sum(d > 0 for d in dif)}/{len(dif)}" if dif else ''))

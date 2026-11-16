@@ -33,8 +33,18 @@ configs `*_afim_se.yaml`); renumerado para 12c2 quando o Exp. 12d passou a ser o
 
 ## Resultado
 
-A preencher.
+Medido em 15 e 16/11/2026 (`runs/E12d_sem_espelho.log` para os treinos, `runs/E12d_representacao.log` para
+as avaliações). **Reduzido em relação à ficha**: o plano de 15/11 dispensou superpixels, então só os pares
+com regiões do SAM foram avaliados (4 das 8 avaliações); a medida secundária (área no outro rim) não foi
+feita. Dice SAM, 5 suportes; Δ contra o VMamba-T pré-treinado, com os suportes em que ganha.
+
+| Par | Passo 500 | Passo 1000 | Com espelho (Exp. 12c), 500 / 1000 |
+|---|---|---|---|
+| RM, regiões do SAM | 0,466 (−0,037; 0/5) | 0,474 (−0,030; 0/5) | 0,479 / 0,476 |
+| CT, regiões do SAM | 0,348 (−0,001; 1/5) | 0,315 (−0,034; 1/5) | 0,348 / 0,333 |
 
 ## Decisão
 
-A preencher.
+Nenhum par cumpre a regra: o resultado negativo do abdome fica mantido também sem espelho. Sem o espelho
+o Dice SAM não é maior que o do mesmo par com espelho em nenhum caso, então o espelho não era a causa. Os
+pares com superpixels não foram medidos.

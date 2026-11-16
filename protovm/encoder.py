@@ -115,8 +115,8 @@ def construir_alp(modelo='vmamba_tiny', estagio=3, norm='checkpoint', resolucao=
 
     if modelo.startswith('dinov2'):
         assert modelo in DINOV2, f'Modelo desconhecido: {modelo}'
-        assert not pos_can and peso_e1 is None, 'pos_can e peso_e1 só existem para o VMamba.'
-        return _construir_dinov2(modelo, resolucao, treino=treino, pesos=pesos)
+        assert peso_e1 is None, 'peso_e1 só existe para o VMamba.'
+        return _construir_dinov2(modelo, resolucao, treino=treino, pesos=pesos, pos_can=pos_can)
 
     variante = modelo.removeprefix('vmamba_')
     assert variante in VARIANTES, f'Modelo desconhecido: {modelo}'
@@ -202,9 +202,10 @@ DINOV2 = {
 }
 
 
-def _construir_dinov2(modelo, resolucao, treino=False, pesos=None):
+def _construir_dinov2(modelo, resolucao, treino=False, pesos=None, pos_can=0.0):
     import models.grid_proto_fewshot as oficial
     entrada, arquivo, canais = DINOV2[modelo]
+    assert not (pos_can and treino), 'pos_can no DINOv2 é só para avaliação (controle do Exp. 12d).'
     repo_hub = PESOS / 'hub' / 'facebookresearch_dinov2_main'
     pre_treinado = PESOS / 'hub' / 'checkpoints' / arquivo
 
@@ -217,12 +218,21 @@ def _construir_dinov2(modelo, resolucao, treino=False, pesos=None):
             self.config['feature_hw'] = [lado, lado]
 
         def get_cls(self):
-            if modelo == 'dinov2_s14':
+            if modelo == 'dinov2_s14' or pos_can:
                 # O oficial só conhece a dimensão do B (768) e do L (1024); para o S cairia em 256.
                 self.cls_unit = oficial.MultiProtoAsConv(proto_grid=[8, 8], feature_hw=self.config['feature_hw'],
-                                                         embed_dim=canais)
+                                                         embed_dim=canais + (4 if pos_can else 0))
             else:
                 super().get_cls()
+
+        def get_features(self, imgs_concat):
+            fts = super().get_features(imgs_concat)
+            if not pos_can:
+                return fts
+            caixas = getattr(self, '_caixas', None)
+            assert caixas is not None and len(caixas) == fts.shape[0], 'pos_can exige alp._caixas, uma por imagem.'
+            return torch.cat([F.normalize(fts, dim=1),
+                              _canais_de_posicao(caixas, fts.shape[-1], pos_can, fts.device)], dim=1)
 
     cfg = {'which_model': modelo, 'cls_name': 'grid_proto', 'proto_grid_size': 8, 'lora': 0,
            'align': treino, 'debug': False, 'use_coco_init': False, 'use_pos_enc': False,
@@ -231,6 +241,8 @@ def _construir_dinov2(modelo, resolucao, treino=False, pesos=None):
     assert getattr(alp.encoder, 'embed_dim', canais) == canais, (modelo, alp.encoder.embed_dim)
     alp.descricao = {'modelo': modelo, 'resolucao': resolucao,
                      'grade': alp.config['feature_hw'][0], 'estagio': None, 'norm': None, 'pesos_sha256': None}
+    if pos_can:
+        alp.descricao['pos_can'] = pos_can
     if pesos is not None:  # checkpoint de um ajuste auto-supervisionado (scripts/treinar_regioes.py)
         salvo = torch.load(pesos, map_location='cpu', weights_only=True)
         alp.load_state_dict(salvo['modelo'], strict=True)

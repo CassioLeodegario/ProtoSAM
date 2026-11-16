@@ -82,7 +82,7 @@ else:
     args.cca = args.cca or args.protocolo == 'oficial'
     sam = None
     for caminho, passo in alvos:
-        extras = {}
+        extras = {'pos_can': args.pos_can} if args.pos_can else {}
         if modelo.startswith('vmamba'):
             extras = {'pos_can': args.pos_can, 'peso_e1': args.peso_e1}
             if args.grade:

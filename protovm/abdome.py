@@ -482,7 +482,10 @@ def _caixa_do_corpo(mod, pid, z):
 def variante_de(descricao):
     """Texto curto com o que difere do encoder padrão (672 px, grade 32 no VMamba, sem pos_can)."""
     if descricao['modelo'].startswith('dinov2'):
-        return '' if descricao['resolucao'] == LADO else f"r{descricao['resolucao']}"
+        partes = [] if descricao['resolucao'] == LADO else [f"r{descricao['resolucao']}"]
+        if descricao.get('pos_can'):
+            partes.append(f"pos{descricao['pos_can']:g}")
+        return '+'.join(partes)
     partes = []
     if descricao['resolucao'] != LADO:
         partes.append(f"r{descricao['resolucao']}")

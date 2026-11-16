@@ -175,6 +175,19 @@ def resumir(_args):
             print(f'{variante:8s} {etapa:7s} | partes {partes} | {orgs} | área gt <100, 100-300, >=300 px: {areas}')
 
 
+def outro_rim(args):
+    """Fração da área prevista pelo SAM que cai no outro rim, a partir do fatias.csv de avaliações."""
+    for pasta in args.pastas:
+        with (Path(pasta) / 'fatias.csv').open(encoding='utf-8', newline='') as f:
+            linhas = list(csv.DictReader(f))
+        sups = sorted({int(l['suporte']) for l in linhas})
+        for nome, usar in (('3 primeiros suportes', sups[:3]), ('todos', sups)):
+            g = [l for l in linhas if int(l['suporte']) in usar]
+            pred, outro = sum(int(l['pred_sam']) for l in g), sum(int(l['outro_sam']) for l in g)
+            print(f"{Path(pasta).name} | {nome} | fatias {len(g)} | Dice SAM por fatia "
+                  f"{_media([float(l['dice_sam']) for l in g]):.3f} | área no outro rim {outro / max(pred, 1):.3f}")
+
+
 p = argparse.ArgumentParser()
 sub = p.add_subparsers(dest='comando', required=True)
 m = sub.add_parser('medir')
@@ -186,5 +199,7 @@ m.add_argument('--suportes', type=int, default=3, help='quantos pacientes-suport
 m.add_argument('--limite', type=int, default=None, help='ensaio: para depois de N fatias')
 m.add_argument('--sufixo', default='')
 sub.add_parser('resumir')
+o = sub.add_parser('outro')
+o.add_argument('pastas', nargs='+')
 args = p.parse_args()
-{'medir': medir, 'resumir': resumir}[args.comando](args)
+{'medir': medir, 'resumir': resumir, 'outro': outro_rim}[args.comando](args)

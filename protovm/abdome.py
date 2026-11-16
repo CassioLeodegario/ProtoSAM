@@ -8,7 +8,7 @@ out/2026 ficam reservados e não são lidos aqui:
 
 Ajuste: um episódio = uma fatia sem rótulo e uma região dela (superpixel de Felzenszwalb dos arquivos
 superpix-MIDDLE, ou região do gerador automático do SAM). Suporte = fatia + região; query = a mesma
-fatia espelhada ('flip') ou deformada ('afim': rotação, escala, translação, espelho e gama).
+fatia espelhada ('flip') ou deformada ('afim': rotação, escala, translação, espelho e gama; 'afim_se': sem espelho).
 Por padrão as fatias com rim ficam fora do ajuste (como em out/2026).
 
 Avaliação: cada paciente-suporte da validação fornece a fatia central de cada rim; as queries são
@@ -235,12 +235,14 @@ def episodio(mod, tipo, entrada, ep, aug, semente_passo, lado=LADO):
     """(suporte, máscara, query, alvo) a `lado`, na GPU."""
     s = tensor_fatia(mod, ep['paciente'], ep['fatia'], entrada, lado)
     fg = _mascara_672(mascara_regiao(mod, tipo, ep), lado)
-    if aug == 'afim':
-        g = torch.Generator().manual_seed(semente_passo)
+    # 'afim_se' (Exp. 12d): a mesma deformação e os mesmos sorteios de 'afim', sem espelho. Se a região deformada
+    # ficar pequena demais, sorteia de novo (até 8 vezes) em vez de cair no espelho.
+    for tentativa in range(8 if aug == 'afim_se' else 1 if aug == 'afim' else 0):
+        g = torch.Generator().manual_seed(semente_passo + 7919 * tentativa)
         u = torch.rand(6, generator=g).tolist()
         ang = math.radians((u[0] * 2 - 1) * 20)
         escala = 0.85 + u[1] * 0.30
-        espelho = -1.0 if u[4] < 0.5 else 1.0
+        espelho = -1.0 if (aug == 'afim' and u[4] < 0.5) else 1.0
         theta = torch.tensor([[espelho * escala * math.cos(ang), -escala * math.sin(ang), (u[2] * 2 - 1) * 0.1],
                               [espelho * escala * math.sin(ang), escala * math.cos(ang), (u[3] * 2 - 1) * 0.1]],
                              dtype=torch.float32, device='cuda')[None]
@@ -251,8 +253,9 @@ def episodio(mod, tipo, entrada, ep, aug, semente_passo, lado=LADO):
             lo, hi = q.min(), q.max()
             q = ((q - lo) / (hi - lo + 1e-6)) ** (0.7 + u[5] * 0.8) * (hi - lo) + lo
             return s, fg, q, alvo.long()
-    else:
-        assert aug == 'flip', aug
+    assert aug in ('flip', 'afim', 'afim_se'), aug
+    if aug == 'afim_se':  # nenhuma das 8 deformações manteve a região: query = a própria fatia
+        return s, fg, s.clone(), fg.long()
     return s, fg, torch.flip(s, dims=[-1]), torch.flip(fg, dims=[-1]).long()
 
 
@@ -474,10 +477,13 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
                         assert logits.shape[1] == 2 and torch.isfinite(logits).all()
                         d_alp = _dice(_para_256(logits.argmax(1)), gt)
                         saida, _ = protosam(query_image=qry, coarse_model_input=entrada_alp(), degrees_rotate=0)
-                        d_sam = _dice(_para_256(torch.as_tensor(saida)), gt)
+                        p_sam = _para_256(torch.as_tensor(saida))
+                        d_sam = _dice(p_sam, gt)
+                        outro = volume(mod, pid)['rotulo'][z] == (5 - classe)  # o outro rim
                         dices.append((d_alp, d_sam))
                         fatias.append({'suporte': sup, 'orgao': orgao, 'paciente': pid, 'fatia': z,
-                                       'dice_alp': d_alp, 'dice_sam': d_sam})
+                                       'dice_alp': d_alp, 'dice_sam': d_sam,
+                                       'pred_sam': int(p_sam.sum()), 'outro_sam': int((p_sam & outro).sum())})
                         n += 1
                     por_paciente.append(np.mean(dices, axis=0))
                     todas.extend(dices)

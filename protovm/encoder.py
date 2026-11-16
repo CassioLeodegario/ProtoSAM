@@ -11,6 +11,11 @@ Resolução, estágio, normalização e grade são parâmetros:
                'sem_norm'    -> saída crua dos blocos
                'ln_unitaria' -> LayerNorm sem parâmetros (escala 1, viés 0)
     grade      lado do mapa de features entregue ao ALP (sempre interpolado)
+    estagio=12 estágios 1 e 2 juntos (Exp. 12d): cada um com ln_unitaria + L2, F2 interpolado para a grade
+               do estágio 1 e concatenado como [sqrt(1 - peso_e1) * F2, sqrt(peso_e1) * F1]
+    pos_can    > 0 concatena 4 canais de posição pos_can * [cos(pi x), sin(pi x), cos(pi y), sin(pi y)] aos
+               tokens normalizados (L2); x e y em [-1, 1] relativos à caixa em alp._caixas (uma por imagem,
+               (x0, y0, x1, y1) em fração da imagem). O padrão 0 não muda nada.
 """
 from pathlib import Path
 
@@ -67,8 +72,38 @@ def _features_vmamba(encoder, imagens, estagio, norm):
     return saida
 
 
+def _ln_l2(x, eps):
+    c = x.shape[1]
+    x = F.layer_norm(x.permute(0, 2, 3, 1), (c,), eps=eps).permute(0, 3, 1, 2).contiguous()
+    return F.normalize(x, dim=1)
+
+
+def _features_multi(encoder, imagens, peso_e1):
+    """Estágios 1 e 2, normalizados separadamente, na grade do estágio 1."""
+    assert encoder.channel_first
+    x = encoder.patch_embed(imagens)
+    x = encoder.layers[0].downsample(encoder.layers[0].blocks(x))
+    f1 = encoder.layers[1].blocks(x)
+    f2 = encoder.layers[2].blocks(encoder.layers[1].downsample(f1))
+    eps = encoder.outnorm3.eps
+    f2 = F.interpolate(_ln_l2(f2, eps), size=f1.shape[-2:], mode='bilinear', align_corners=False)
+    return torch.cat([(1 - peso_e1) ** 0.5 * f2, peso_e1 ** 0.5 * _ln_l2(f1, eps)], dim=1)
+
+
+def _canais_de_posicao(caixas, grade, peso, device):
+    """(B, 4, grade, grade): peso * [cos(pi x), sin(pi x), cos(pi y), sin(pi y)], x e y relativos à caixa."""
+    centros = (torch.arange(grade, device=device, dtype=torch.float32) + 0.5) / grade
+    saida = []
+    for x0, y0, x1, y1 in caixas:
+        x = (2 * (centros - x0) / max(x1 - x0, 1e-6) - 1).clamp(-1, 1)[None, :].expand(grade, grade)
+        y = (2 * (centros - y0) / max(y1 - y0, 1e-6) - 1).clamp(-1, 1)[:, None].expand(grade, grade)
+        saida.append(torch.stack([torch.cos(torch.pi * x), torch.sin(torch.pi * x),
+                                  torch.cos(torch.pi * y), torch.sin(torch.pi * y)], dim=0))
+    return peso * torch.stack(saida, dim=0)
+
+
 def construir_alp(modelo='vmamba_tiny', estagio=3, norm='checkpoint', resolucao=672,
-                  grade=32, proto_grid=8, treino=False, pesos=None, semente=1234):
+                  grade=32, proto_grid=8, treino=False, pesos=None, semente=1234, pos_can=0.0, peso_e1=None):
     """Retorna o FewShotSeg na GPU.
 
     pesos: caminho de um checkpoint EFT (chave 'modelo'); None usa o pré-treinado.
@@ -80,15 +115,25 @@ def construir_alp(modelo='vmamba_tiny', estagio=3, norm='checkpoint', resolucao=
 
     if modelo.startswith('dinov2'):
         assert modelo in DINOV2, f'Modelo desconhecido: {modelo}'
+        assert not pos_can and peso_e1 is None, 'pos_can e peso_e1 só existem para o VMamba.'
         return _construir_dinov2(modelo, resolucao, treino=treino, pesos=pesos)
 
     variante = modelo.removeprefix('vmamba_')
     assert variante in VARIANTES, f'Modelo desconhecido: {modelo}'
-    assert estagio in (2, 3) and norm in NORMS
+    assert estagio in (2, 3, 12) and norm in NORMS
     assert not (norm == 'checkpoint' and estagio != 3), "norm 'checkpoint' só existe no estágio 3"
-    lado = resolucao // (4 * 2 ** estagio)
-    assert lado * 4 * 2 ** estagio == resolucao, f'Resolução {resolucao} não divisível no estágio {estagio}'
-    canais = VARIANTES[variante]['dims'] * 2 ** estagio
+    multi = estagio == 12
+    assert multi == (peso_e1 is not None), 'peso_e1 acompanha o estágio 12 (e só ele).'
+    dims = VARIANTES[variante]['dims']
+    if multi:
+        assert norm == 'ln_unitaria' and 0 < peso_e1 < 1 and not treino
+        lado, canais_enc = resolucao // 8, dims * 2 + dims * 4
+        assert lado * 8 == resolucao
+    else:
+        lado = resolucao // (4 * 2 ** estagio)
+        assert lado * 4 * 2 ** estagio == resolucao, f'Resolução {resolucao} não divisível no estágio {estagio}'
+        canais_enc = dims * 2 ** estagio
+    canais = canais_enc + (4 if pos_can else 0)
     encoder = _vmamba_pretreinado(variante)
 
     class ALPVMamba(FewShotSeg):
@@ -103,9 +148,17 @@ def construir_alp(modelo='vmamba_tiny', estagio=3, norm='checkpoint', resolucao=
         def get_features(self, imgs_concat):
             imagens = F.interpolate(imgs_concat, size=(resolucao, resolucao),
                                     mode='bilinear', align_corners=False)
-            fts = _features_vmamba(self.encoder, imagens, estagio, norm)
-            assert tuple(fts.shape[1:]) == (canais, lado, lado), fts.shape
-            return F.interpolate(fts, size=(grade, grade), mode='bilinear', align_corners=False)
+            if multi:
+                fts = _features_multi(self.encoder, imagens, peso_e1)
+            else:
+                fts = _features_vmamba(self.encoder, imagens, estagio, norm)
+            assert tuple(fts.shape[1:]) == (canais_enc, lado, lado), fts.shape
+            fts = F.interpolate(fts, size=(grade, grade), mode='bilinear', align_corners=False)
+            if not pos_can:
+                return fts
+            caixas = getattr(self, '_caixas', None)
+            assert caixas is not None and len(caixas) == fts.shape[0], 'pos_can exige alp._caixas, uma por imagem.'
+            return torch.cat([F.normalize(fts, dim=1), _canais_de_posicao(caixas, grade, pos_can, fts.device)], dim=1)
 
     cfg = {'which_model': modelo, 'cls_name': 'grid_proto', 'proto_grid_size': proto_grid,
            'feature_hw': [grade, grade], 'lora': 0, 'align': treino, 'debug': False}
@@ -113,6 +166,10 @@ def construir_alp(modelo='vmamba_tiny', estagio=3, norm='checkpoint', resolucao=
     assert type(alp).forward is FewShotSeg.forward and type(alp).alignLoss is FewShotSeg.alignLoss
     alp.descricao = {'modelo': modelo, 'estagio': estagio, 'norm': norm, 'resolucao': resolucao,
                      'grade': grade, 'lado_features': lado, 'canais': canais, 'pesos_sha256': None}
+    if pos_can:
+        alp.descricao['pos_can'] = pos_can
+    if multi:
+        alp.descricao['peso_e1'] = peso_e1
 
     if pesos is not None:
         salvo = torch.load(pesos, map_location='cpu', weights_only=True)

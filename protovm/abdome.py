@@ -40,9 +40,13 @@ from protovm.util import (agora, ambiente, estado_do_codigo, fixar_numerica, git
 LADO = 672
 MEDIA = [123.675, 116.28, 103.53]
 DESVIO = [58.395, 57.12, 57.375]
-ENTRADAS = ('zscore', 'imagenet')
+ENTRADAS = ('zscore', 'imagenet', 'imagenet_fixo', 'zscore_corpo', 'imagenet_corpo')
 # entrada 'zscore'   -> (x - média) / desvio do volume, repetido em 3 canais (o que o código oficial faz)
 #         'imagenet' -> volume recortado nos percentis 0,5 e 99,5, levado a 0-255 e normalizado como ImageNet
+# Exp. 12d:
+#         'imagenet_fixo'  -> sem o corte por percentil: mínimo e máximo do volume levados a 0-255, depois ImageNet
+#         'zscore_corpo'   -> zscore com média e desvio só dos voxels dentro do corpo (fgmask > 0)
+#         'imagenet_corpo' -> 'imagenet' com os percentis 0,5 e 99,5 só dos voxels dentro do corpo
 MODALIDADES = {
     'MR': {'pasta': 'CHAOST2/chaos_MR_T2_normalized', 'orgaos': {'rim_d': ('RK', 2), 'rim_e': ('LK', 3)},
            'entrada': 'zscore', 'ajuste': list(range(10, 20)), 'validacao': list(range(5, 10)),
@@ -58,7 +62,8 @@ REGISTRO = RAIZ / 'resultados' / 'abdome.csv'
 COLUNAS = ['id', 'data', 'estado', 'modalidade', 'modelo', 'pesos', 'passo', 'pseudo', 'aug', 'lr', 'excluir',
            'entrada', 'aval_estagio', 'aval_norm', 'cca', 'suporte', 'n',
            'dice_alp_rim_d', 'dice_sam_rim_d', 'dice_alp_rim_e', 'dice_sam_rim_e', 'dice_alp', 'dice_sam',
-           'commit', 'origem', 'obs', 'mascara', 'protocolo', 'dice_vol_alp', 'dice_vol']
+           'commit', 'origem', 'obs', 'mascara', 'protocolo', 'dice_vol_alp', 'dice_vol', 'variante']
+# variante: o que difere do encoder padrão na avaliação (resolução, grade, pos_can, peso_e1); vazio = padrão.
 # dice_vol (SAM) e dice_vol_alp: Dice 3D por paciente (TP, FP e FN somados nas fatias avaliadas do órgão, como no
 # ALPNet), média entre pacientes e depois entre órgãos. dice_alp e dice_sam continuam 2D (por fatia).
 # protocolo 'e12'     -> suporte = fatia central do rim; até 8 fatias por paciente; Dice por paciente (Exp. 12)
@@ -104,11 +109,15 @@ def volume(mod, pid):
     lo, hi = np.percentile(img, [0.5, 99.5])
     assert hi > lo
     v.update(media=float(img.mean()), desvio=float(img.std()), lo=float(lo), hi=float(hi))
+    dentro = img[v['corpo']]
+    lo_c, hi_c = np.percentile(dentro, [0.5, 99.5])
+    v.update(minimo=float(img.min()), maximo=float(img.max()), media_c=float(dentro.mean()),
+             desvio_c=float(dentro.std()), lo_c=float(lo_c), hi_c=float(hi_c))
     return v
 
 
-def _em_255(v, z):
-    return np.clip((v['img'][z] - v['lo']) / (v['hi'] - v['lo']), 0, 1) * 255.0
+def _em_255(v, z, lo='lo', hi='hi'):
+    return np.clip((v['img'][z] - v[lo]) / (v[hi] - v[lo]), 0, 1) * 255.0
 
 
 def fatia_uint8(mod, pid, z):
@@ -121,8 +130,12 @@ def tensor_fatia(mod, pid, z, entrada, lado=LADO):
     v = volume(mod, pid)
     if entrada == 'zscore':
         x = torch.from_numpy((v['img'][z] - v['media']) / v['desvio'])[None, None].repeat(1, 3, 1, 1).cuda()
-    elif entrada == 'imagenet':
-        x = torch.from_numpy(_em_255(v, z).astype(np.float32))[None, None].repeat(1, 3, 1, 1).cuda()
+    elif entrada == 'zscore_corpo':
+        x = torch.from_numpy((v['img'][z] - v['media_c']) / v['desvio_c'])[None, None].repeat(1, 3, 1, 1).cuda()
+    elif entrada in ('imagenet', 'imagenet_fixo', 'imagenet_corpo'):
+        lo, hi = {'imagenet': ('lo', 'hi'), 'imagenet_fixo': ('minimo', 'maximo'),
+                  'imagenet_corpo': ('lo_c', 'hi_c')}[entrada]
+        x = torch.from_numpy(_em_255(v, z, lo, hi).astype(np.float32))[None, None].repeat(1, 3, 1, 1).cuda()
         x = (x - x.new_tensor(MEDIA)[None, :, None, None]) / x.new_tensor(DESVIO)[None, :, None, None]
     else:
         raise ValueError(entrada)
@@ -435,18 +448,51 @@ def _instalar_cache_suporte(alp):
         chave = getattr(alp, '_chave_suporte', None)
         if chave is None or imgs_concat.shape[0] != 2:
             return original(imgs_concat)
-        if chave not in cache:
-            if len(cache) >= 8:
-                cache.clear()
-            cache[chave] = original(imgs_concat[:1])
-        return torch.cat([cache[chave], original(imgs_concat[1:])], dim=0)
+        caixas = getattr(alp, '_caixas', None)
+        try:
+            if chave not in cache:
+                if len(cache) >= 8:
+                    cache.clear()
+                if caixas is not None:
+                    alp._caixas = caixas[:1]
+                cache[chave] = original(imgs_concat[:1])
+            if caixas is not None:
+                alp._caixas = caixas[1:]
+            return torch.cat([cache[chave], original(imgs_concat[1:])], dim=0)
+        finally:
+            if caixas is not None:
+                alp._caixas = caixas
 
     alp.get_features = get_features
 
     def desfazer():
         del alp.get_features
-        alp._chave_suporte = None
+        alp._chave_suporte = alp._caixas = None
     return desfazer
+
+
+def _caixa_do_corpo(mod, pid, z):
+    """(x0, y0, x1, y1) da máscara do corpo na fatia, em fração da imagem; a imagem inteira se estiver vazia."""
+    ys, xs = np.nonzero(volume(mod, pid)['corpo'][z])
+    if not len(xs):
+        return (0.0, 0.0, 1.0, 1.0)
+    return (xs.min() / 256, ys.min() / 256, (xs.max() + 1) / 256, (ys.max() + 1) / 256)
+
+
+def variante_de(descricao):
+    """Texto curto com o que difere do encoder padrão (672 px, grade 32 no VMamba, sem pos_can)."""
+    if descricao['modelo'].startswith('dinov2'):
+        return '' if descricao['resolucao'] == LADO else f"r{descricao['resolucao']}"
+    partes = []
+    if descricao['resolucao'] != LADO:
+        partes.append(f"r{descricao['resolucao']}")
+    if descricao['grade'] != 32:
+        partes.append(f"g{descricao['grade']}")
+    if descricao.get('pos_can'):
+        partes.append(f"pos{descricao['pos_can']:g}")
+    if descricao.get('peso_e1') is not None:
+        partes.append(f"w{descricao['peso_e1']:g}")
+    return '+'.join(partes)
 
 
 def _dice_vol(somas):
@@ -456,11 +502,12 @@ def _dice_vol(somas):
 
 
 def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotulo='', registrar=True,
-            protocolo='e12', cache_suporte=True):
+            protocolo='e12', cache_suporte=True, limite=None):
     """Avalia um modelo em todos os suportes da validação de `mod`. sam = construir_protosam(alp, cca).
 
     O ALP roda uma vez por fatia: a máscara do ALP é lida da mesma execução que alimenta o SAM (gancho no
-    forward). cache_suporte=False volta a codificar o suporte junto com cada query."""
+    forward). cache_suporte=False volta a codificar o suporte junto com cada query.
+    limite: ensaio com as N primeiras fatias de cada (suporte, rim, paciente); nunca entra no registro."""
     assert protocolo in PROTOCOLOS
     oficial = protocolo == 'oficial'
     git_inicio = git_commit()
@@ -484,8 +531,8 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
         lambda m, a, saida_alp: captura.__setitem__('pred', saida_alp[0].detach().clone()))
     desfazer_cache = _instalar_cache_suporte(alp) if cache_suporte else (lambda: None)
     try:
-        _avaliar(alp, protosam, mod, entrada, metadados, fatias_max, suportes, registrar, protocolo, oficial,
-                 cfg, cca, mascara, pasta, git_inicio, fatias, captura)
+        _avaliar(alp, protosam, mod, entrada, metadados, fatias_max, suportes, registrar and not limite, protocolo,
+                 oficial, cfg, cca, mascara, pasta, git_inicio, fatias, captura, limite)
     finally:
         gancho.remove()
         desfazer_cache()
@@ -497,8 +544,10 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
 
 
 def _avaliar(alp, protosam, mod, entrada, metadados, fatias_max, suportes, registrar, protocolo, oficial,
-             cfg, cca, mascara, pasta, git_inicio, fatias, captura):
+             cfg, cca, mascara, pasta, git_inicio, fatias, captura, limite=None):
     from models.ProtoSAM import ALPNetInput
+    lado = alp.descricao['resolucao']
+    com_posicao = bool(alp.descricao.get('pos_can'))
     with torch.no_grad(), torch.autocast('cuda', enabled=False):
         for sup in (suportes or cfg['suportes']):
             medias, vols = {}, {}
@@ -506,8 +555,8 @@ def _avaliar(alp, protosam, mod, entrada, metadados, fatias_max, suportes, regis
             for orgao, (_, classe) in cfg['orgaos'].items():
                 zs = fatias_com(mod, orgao, sup)
                 z_sups = [zs[int(p * len(zs))] for p in PCTS_SUPORTE] if oficial else [zs[len(zs) // 2]]
-                sups = {z: (tensor_fatia(mod, sup, z, entrada), _mascara_672(volume(mod, sup)['rotulo'][z] == classe))
-                        for z in set(z_sups)}
+                sups = {z: (tensor_fatia(mod, sup, z, entrada, lado),
+                            _mascara_672(volume(mod, sup)['rotulo'][z] == classe, lado)) for z in set(z_sups)}
                 assert all(m.sum() > 0 for _, m in sups.values())
                 por_paciente, todas, vol_pac = [], [], []
                 for pid in cfg['validacao']:
@@ -518,13 +567,17 @@ def _avaliar(alp, protosam, mod, entrada, metadados, fatias_max, suportes, regis
                         zq[i] for i in sorted(set(np.linspace(0, len(zq) - 1, min(len(zq), fatias_max))
                                                   .round().astype(int).tolist()))]
                     dices, somas_alp, somas_sam = [], [], []
+                    if limite:
+                        escolhidas = escolhidas[:limite]
                     for z in escolhidas:
                         gt = volume(mod, pid)['rotulo'][z] == classe
                         assert gt.any()
-                        qry = tensor_fatia(mod, pid, z, entrada)
+                        qry = tensor_fatia(mod, pid, z, entrada, lado)
                         z_sup = z_sups[_parte(z, zq)] if oficial else z_sups[0]
                         sup_img, sup_mask = sups[z_sup]
                         alp._chave_suporte = (mod, entrada, sup, orgao, z_sup)
+                        if com_posicao:
+                            alp._caixas = [_caixa_do_corpo(mod, sup, z_sup), _caixa_do_corpo(mod, pid, z)]
 
                         def entrada_alp():
                             return ALPNetInput(support_images=[sup_img], support_labels=[sup_mask], query_images=qry,
@@ -562,7 +615,8 @@ def _avaliar(alp, protosam, mod, entrada, metadados, fatias_max, suportes, regis
                 _adicionar({'estado': estado_do_codigo(git_inicio, git_commit()), 'modalidade': mod,
                             'modelo': d['modelo'], 'entrada': entrada, 'aval_estagio': d.get('estagio') or '',
                             'aval_norm': d.get('norm') or '', 'cca': cca, 'mascara': mascara,
-                            'protocolo': protocolo, 'suporte': f'P{sup:02d}', 'n': n,
+                            'protocolo': protocolo, 'variante': variante_de(d),
+                            'suporte': f'P{sup:02d}', 'n': n,
                             **{f'dice_{e}_{o}': f'{m[i]:.6f}' for o, m in medias.items()
                                for i, e in enumerate(('alp', 'sam'))},
                             'dice_alp': f'{alp_m:.6f}', 'dice_sam': f'{sam_m:.6f}',
@@ -572,25 +626,48 @@ def _avaliar(alp, protosam, mod, entrada, metadados, fatias_max, suportes, regis
 
 
 def resumo():
-    """Média e desvio entre suportes de cada configuração, e diferença pareada contra o mesmo modelo
-    pré-treinado lido do mesmo jeito (mesma modalidade, entrada, estágio, norm, CCA, máscara e protocolo)."""
+    """Média e desvio entre suportes de cada configuração e diferença pareada de dice_sam.
+
+    Linha ajustada: contra o mesmo modelo pré-treinado lido do mesmo jeito (modalidade, entrada, estágio, norm,
+    CCA, máscara, protocolo e variante). Linha pré-treinada fora do padrão (outra entrada, outro estágio ou
+    variante): contra a referência do Exp. 12c (entrada padrão da modalidade; VMamba na penúltima camada,
+    sem_norm, sem variante)."""
     with REGISTRO.open(encoding='utf-8', newline='') as f:
-        linhas = [dict(l, mascara=l.get('mascara') or 'indice0', protocolo=l.get('protocolo') or 'e12')
+        linhas = [dict(l, mascara=l.get('mascara') or 'indice0', protocolo=l.get('protocolo') or 'e12',
+                       variante=l.get('variante') or '')
                   for l in csv.DictReader(f) if l['estado'] == 'novo']
-    chaves = ['modalidade', 'modelo', 'entrada', 'aval_estagio', 'aval_norm', 'cca', 'mascara', 'protocolo', 'pseudo',
-              'aug', 'lr', 'excluir', 'pesos', 'passo']
+    leitura = ['modalidade', 'modelo', 'entrada', 'aval_estagio', 'aval_norm', 'cca', 'mascara', 'protocolo',
+               'variante']
+    treino = ['pseudo', 'aug', 'lr', 'excluir', 'pesos', 'passo']
     grupos = {}
     for l in linhas:
-        grupos.setdefault(tuple(l[c] for c in chaves), {})[l['suporte']] = l
+        grupos.setdefault(tuple(l[c] for c in leitura + treino), {})[l['suporte']] = l
+    pre = ('', '', '', '', 'pre_treinado', '')
     saida = []
     for k, g in grupos.items():
-        base = grupos.get(k[:8] + ('', '', '', '', 'pre_treinado', ''), {})
+        d = dict(zip(leitura + treino, k))
+        if d['pesos'] != 'pre_treinado':
+            base = grupos.get(k[:len(leitura)] + pre, {})
+        else:
+            vm = d['modelo'].startswith('vmamba')
+            ref = dict(d, entrada=MODALIDADES[d['modalidade']]['entrada'], aval_estagio='2' if vm else '',
+                       aval_norm='sem_norm' if vm else '', variante='')
+            chave = tuple(ref[c] for c in leitura) + pre
+            base = grupos.get(chave, {}) if chave != k else {}
         alp = [float(l['dice_alp']) for l in g.values()]
         sam = [float(l['dice_sam']) for l in g.values()]
-        dif = [float(g[s]['dice_sam']) - float(base[s]['dice_sam']) for s in g if s in base]
-        nome = f"{k[0]} {k[1]} {k[2]} e{k[3] or '-'} cca{k[5]} {k[6]} {k[7]} | " + (
-            'pré-treinado' if k[12] == 'pre_treinado' else f"{k[12].split('_abdtreino_')[-1]} passo {k[13]}")
+        vol = [float(l['dice_vol']) for l in g.values() if l.get('dice_vol')]
+        comuns = [s for s in g if s in base]
+        dif = [float(g[s]['dice_sam']) - float(base[s]['dice_sam']) for s in comuns]
+        dif_alp = [float(g[s]['dice_alp']) - float(base[s]['dice_alp']) for s in comuns]
+        nome = (f"{d['modalidade']} {d['modelo']} {d['entrada']} e{d['aval_estagio'] or '-'} cca{d['cca']} "
+                f"{d['mascara']} {d['protocolo']}{' ' + d['variante'] if d['variante'] else ''} | "
+                + ('pré-treinado' if d['pesos'] == 'pre_treinado'
+                   else f"{d['pesos'].split('_abdtreino_')[-1]} passo {d['passo']}"))
         saida.append(f"{nome} | n={len(g)} ALP {np.mean(alp):.3f}±{np.std(alp, ddof=1) if len(alp) > 1 else 0:.3f} "
                      f"SAM {np.mean(sam):.3f}±{np.std(sam, ddof=1) if len(sam) > 1 else 0:.3f}"
-                     + (f" | Δ {np.mean(dif):+.3f} ganha {sum(d > 0 for d in dif)}/{len(dif)}" if dif else ''))
+                     + (f" 3D {np.mean(vol):.3f}" if len(vol) == len(g) else '')
+                     + (f" | Δ {np.mean(dif):+.3f} ganha {sum(x > 0 for x in dif)}/{len(dif)}"
+                        f" | ΔALP {np.mean(dif_alp):+.3f} ganha {sum(x > 0 for x in dif_alp)}/{len(dif_alp)}"
+                        if dif else ''))
     return saida

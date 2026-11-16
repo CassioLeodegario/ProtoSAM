@@ -34,6 +34,10 @@ a.add_argument('--passos', type=int, nargs='*', default=[])
 a.add_argument('--estagio', type=int, default=None)
 a.add_argument('--norm', default=None)
 a.add_argument('--entrada', choices=abdome.ENTRADAS, default=None)
+a.add_argument('--resolucao', type=int, default=abdome.LADO, help='lado da fatia no encoder (padrão 672)')
+a.add_argument('--grade', type=int, default=None, help='grade de features do VMamba entregue ao ALP (padrão 32)')
+a.add_argument('--pos-can', type=float, default=0.0, help='peso dos 4 canais de posição relativos ao corpo')
+a.add_argument('--peso-e1', type=float, default=None, help='peso do estágio 1 com --estagio 12')
 a.add_argument('--cca', action='store_true')
 a.add_argument('--mascara', choices=abdome.MASCARAS, default='indice0')
 a.add_argument('--protocolo', choices=abdome.PROTOCOLOS, default='e12',
@@ -41,6 +45,7 @@ a.add_argument('--protocolo', choices=abdome.PROTOCOLOS, default='e12',
 a.add_argument('--sem-cache', action='store_true', help='recodifica o suporte a cada query (como antes do cache)')
 a.add_argument('--fatias-max', type=int, default=8)
 a.add_argument('--suportes', type=int, nargs='*', default=None, help='ensaio: só estes pacientes-suporte')
+a.add_argument('--limite', type=int, default=None, help='ensaio: N fatias por paciente; fora do registro')
 a.add_argument('--sem-registro', action='store_true', help='ensaio: não grava em resultados/abdome.csv')
 a.add_argument('--obs', default='')
 sub.add_parser('resumo')
@@ -77,7 +82,12 @@ else:
     args.cca = args.cca or args.protocolo == 'oficial'
     sam = None
     for caminho, passo in alvos:
-        alp = construir_alp(modelo, estagio, norm, abdome.LADO, pesos=caminho)
+        extras = {}
+        if modelo.startswith('vmamba'):
+            extras = {'pos_can': args.pos_can, 'peso_e1': args.peso_e1}
+            if args.grade:
+                extras['grade'] = args.grade
+        alp = construir_alp(modelo, estagio, norm, args.resolucao, pesos=caminho, **extras)
         if sam is None:
             sam = construir_protosam(alp, cca=args.cca)
             if args.mascara == 'maior_score':
@@ -85,8 +95,10 @@ else:
         else:
             sam[0].model = alp
         abdome.avaliar(alp, sam, mod, entrada, dict(base, passo=passo, obs=args.obs), fatias_max=args.fatias_max,
-                       suportes=args.suportes, registrar=not args.sem_registro, protocolo=args.protocolo, cache_suporte=not args.sem_cache,
+                       suportes=args.suportes, registrar=not args.sem_registro, protocolo=args.protocolo, cache_suporte=not args.sem_cache, limite=args.limite,
                        rotulo=f"{modelo}_{passo or 'pre'}_e{estagio}{'_cca' if args.cca else ''}"
+                              f"{'_' + abdome.variante_de(alp.descricao) if abdome.variante_de(alp.descricao) else ''}"
+                              f"{'_' + entrada if entrada != abdome.MODALIDADES[mod]['entrada'] else ''}"
                               f"{'_score' if args.mascara == 'maior_score' else ''}"
                               f"{'_oficial' if args.protocolo == 'oficial' else ''}")
         del alp

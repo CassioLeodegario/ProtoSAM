@@ -1,6 +1,7 @@
-# Exp. 12d — O espelho na query atrapalha o ajuste no abdome?
+# Exp. 12c2 — O espelho na query atrapalha o ajuste no abdome?
 
-Escrita em 15/11/2026, antes de rodar. Pedido do Cássio em 15/11.
+Escrita em 15/11/2026, antes de rodar. Pedido do Cássio em 15/11. Lançado como "Exp. 12d" (log `runs/E12d_sem_espelho.log`,
+configs `*_afim_se.yaml`); renumerado para 12c2 quando o Exp. 12d passou a ser o da representação do VMamba.
 
 - **Pergunta**: todos os treinos do Exp. 12 usaram espelho horizontal na query (sempre em `flip`, em metade
   dos episódios em `afim`). No abdome o lado é informação: rim direito e rim esquerdo só se distinguem pela

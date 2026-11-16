@@ -58,7 +58,9 @@ REGISTRO = RAIZ / 'resultados' / 'abdome.csv'
 COLUNAS = ['id', 'data', 'estado', 'modalidade', 'modelo', 'pesos', 'passo', 'pseudo', 'aug', 'lr', 'excluir',
            'entrada', 'aval_estagio', 'aval_norm', 'cca', 'suporte', 'n',
            'dice_alp_rim_d', 'dice_sam_rim_d', 'dice_alp_rim_e', 'dice_sam_rim_e', 'dice_alp', 'dice_sam',
-           'commit', 'origem', 'obs', 'mascara', 'protocolo']
+           'commit', 'origem', 'obs', 'mascara', 'protocolo', 'dice_vol_alp', 'dice_vol']
+# dice_vol (SAM) e dice_vol_alp: Dice 3D por paciente (TP, FP e FN somados nas fatias avaliadas do órgão, como no
+# ALPNet), média entre pacientes e depois entre órgãos. dice_alp e dice_sam continuam 2D (por fatia).
 # protocolo 'e12'     -> suporte = fatia central do rim; até 8 fatias por paciente; Dice por paciente (Exp. 12)
 #           'oficial' -> como validation_protosam.py: CCA ligada, 3 fatias de suporte (1/6, 1/2 e 5/6 do rim) e cada
 #                        fatia de query usa a da sua terça parte; todas as fatias com o rim; média do Dice por fatia
@@ -423,12 +425,44 @@ def _parte(z, zs):
     return min(max(p, 0), 2)
 
 
+def _instalar_cache_suporte(alp):
+    """Evita recodificar a fatia de suporte a cada query. O forward oficial codifica [suporte, query] juntos;
+    aqui o suporte é codificado uma vez por chave (alp._chave_suporte) e só a query passa pelo encoder.
+    Retorna a função que desfaz a instalação."""
+    original, cache = alp.get_features, {}
+
+    def get_features(imgs_concat):
+        chave = getattr(alp, '_chave_suporte', None)
+        if chave is None or imgs_concat.shape[0] != 2:
+            return original(imgs_concat)
+        if chave not in cache:
+            if len(cache) >= 8:
+                cache.clear()
+            cache[chave] = original(imgs_concat[:1])
+        return torch.cat([cache[chave], original(imgs_concat[1:])], dim=0)
+
+    alp.get_features = get_features
+
+    def desfazer():
+        del alp.get_features
+        alp._chave_suporte = None
+    return desfazer
+
+
+def _dice_vol(somas):
+    """somas: lista de (tp, pred, gt) por fatia de um paciente -> Dice do volume."""
+    tp, pred, gt = (sum(x[i] for x in somas) for i in range(3))
+    return 2 * tp / max(pred + gt, 1)
+
+
 def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotulo='', registrar=True,
-            protocolo='e12'):
-    """Avalia um modelo em todos os suportes da validação de `mod`. sam = construir_protosam(alp, cca)."""
+            protocolo='e12', cache_suporte=True):
+    """Avalia um modelo em todos os suportes da validação de `mod`. sam = construir_protosam(alp, cca).
+
+    O ALP roda uma vez por fatia: a máscara do ALP é lida da mesma execução que alimenta o SAM (gancho no
+    forward). cache_suporte=False volta a codificar o suporte junto com cada query."""
     assert protocolo in PROTOCOLOS
     oficial = protocolo == 'oficial'
-    from models.ProtoSAM import ALPNetInput
     git_inicio = git_commit()
     fixar_numerica()
     semear(42)
@@ -445,9 +479,29 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
                                         'ambiente': ambiente()})
     print('AVALIAÇÃO:', pasta, flush=True)
     fatias = []
+    captura = {}
+    gancho = alp.register_forward_hook(
+        lambda m, a, saida_alp: captura.__setitem__('pred', saida_alp[0].detach().clone()))
+    desfazer_cache = _instalar_cache_suporte(alp) if cache_suporte else (lambda: None)
+    try:
+        _avaliar(alp, protosam, mod, entrada, metadados, fatias_max, suportes, registrar, protocolo, oficial,
+                 cfg, cca, mascara, pasta, git_inicio, fatias, captura)
+    finally:
+        gancho.remove()
+        desfazer_cache()
+    with (pasta / 'fatias.csv').open('w', newline='', encoding='utf-8') as f:
+        w = csv.DictWriter(f, fieldnames=list(fatias[0]))
+        w.writeheader()
+        w.writerows(fatias)
+    return pasta
+
+
+def _avaliar(alp, protosam, mod, entrada, metadados, fatias_max, suportes, registrar, protocolo, oficial,
+             cfg, cca, mascara, pasta, git_inicio, fatias, captura):
+    from models.ProtoSAM import ALPNetInput
     with torch.no_grad(), torch.autocast('cuda', enabled=False):
         for sup in (suportes or cfg['suportes']):
-            medias = {}
+            medias, vols = {}, {}
             n = 0
             for orgao, (_, classe) in cfg['orgaos'].items():
                 zs = fatias_com(mod, orgao, sup)
@@ -455,7 +509,7 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
                 sups = {z: (tensor_fatia(mod, sup, z, entrada), _mascara_672(volume(mod, sup)['rotulo'][z] == classe))
                         for z in set(z_sups)}
                 assert all(m.sum() > 0 for _, m in sups.values())
-                por_paciente, todas = [], []
+                por_paciente, todas, vol_pac = [], [], []
                 for pid in cfg['validacao']:
                     if pid == sup:
                         continue
@@ -463,35 +517,46 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
                     escolhidas = zq if oficial else [
                         zq[i] for i in sorted(set(np.linspace(0, len(zq) - 1, min(len(zq), fatias_max))
                                                   .round().astype(int).tolist()))]
-                    dices = []
+                    dices, somas_alp, somas_sam = [], [], []
                     for z in escolhidas:
                         gt = volume(mod, pid)['rotulo'][z] == classe
                         assert gt.any()
                         qry = tensor_fatia(mod, pid, z, entrada)
-                        sup_img, sup_mask = sups[z_sups[_parte(z, zq)] if oficial else z_sups[0]]
+                        z_sup = z_sups[_parte(z, zq)] if oficial else z_sups[0]
+                        sup_img, sup_mask = sups[z_sup]
+                        alp._chave_suporte = (mod, entrada, sup, orgao, z_sup)
 
                         def entrada_alp():
                             return ALPNetInput(support_images=[sup_img], support_labels=[sup_mask], query_images=qry,
                                                isval=True, val_wsize=2, show_viz=False, supp_fts=None)
-                        logits = wrapper(entrada_alp())
-                        assert logits.shape[1] == 2 and torch.isfinite(logits).all()
-                        d_alp = _dice(_para_256(logits.argmax(1)), gt)
+                        captura.clear()
                         saida, _ = protosam(query_image=qry, coarse_model_input=entrada_alp(), degrees_rotate=0)
+                        logits = captura['pred']
+                        assert logits.shape[1] == 2 and torch.isfinite(logits).all()
+                        p_alp = _para_256(logits.argmax(1))
+                        d_alp = _dice(p_alp, gt)
                         p_sam = _para_256(torch.as_tensor(saida))
                         d_sam = _dice(p_sam, gt)
                         outro = volume(mod, pid)['rotulo'][z] == (5 - classe)  # o outro rim
                         dices.append((d_alp, d_sam))
+                        somas_alp.append((int((p_alp & gt).sum()), int(p_alp.sum()), int(gt.sum())))
+                        somas_sam.append((int((p_sam & gt).sum()), int(p_sam.sum()), int(gt.sum())))
                         fatias.append({'suporte': sup, 'orgao': orgao, 'paciente': pid, 'fatia': z,
                                        'dice_alp': d_alp, 'dice_sam': d_sam,
-                                       'pred_sam': int(p_sam.sum()), 'outro_sam': int((p_sam & outro).sum())})
+                                       'pred_sam': int(p_sam.sum()), 'outro_sam': int((p_sam & outro).sum()),
+                                       'gt': int(gt.sum()), 'tp_sam': somas_sam[-1][0],
+                                       'pred_alp': int(p_alp.sum()), 'tp_alp': somas_alp[-1][0]})
                         n += 1
                     por_paciente.append(np.mean(dices, axis=0))
                     todas.extend(dices)
+                    vol_pac.append((_dice_vol(somas_alp), _dice_vol(somas_sam)))
                 medias[orgao] = np.mean(todas if oficial else por_paciente, axis=0)
+                vols[orgao] = np.mean(vol_pac, axis=0)
             alp_m = float(np.mean([m[0] for m in medias.values()]))
             sam_m = float(np.mean([m[1] for m in medias.values()]))
+            vol_alp, vol_sam = (float(np.mean([v[i] for v in vols.values()])) for i in range(2))
             print(f'{mod} suporte {sup}: ' + ' | '.join(f'{o} ALP={m[0]:.4f} SAM={m[1]:.4f}' for o, m in medias.items())
-                  + f' | média ALP={alp_m:.4f} SAM={sam_m:.4f}', flush=True)
+                  + f' | média ALP={alp_m:.6f} SAM={sam_m:.6f} | 3D ALP={vol_alp:.4f} SAM={vol_sam:.4f}', flush=True)
             if registrar:
                 d = alp.descricao
                 _adicionar({'estado': estado_do_codigo(git_inicio, git_commit()), 'modalidade': mod,
@@ -501,13 +566,9 @@ def avaliar(alp, sam, mod, entrada, metadados, fatias_max=8, suportes=None, rotu
                             **{f'dice_{e}_{o}': f'{m[i]:.6f}' for o, m in medias.items()
                                for i, e in enumerate(('alp', 'sam'))},
                             'dice_alp': f'{alp_m:.6f}', 'dice_sam': f'{sam_m:.6f}',
+                            'dice_vol_alp': f'{vol_alp:.6f}', 'dice_vol': f'{vol_sam:.6f}',
                             'commit': (git_inicio['commit'] or '')[:10],
                             'origem': str(pasta.relative_to(RAIZ).as_posix()), **metadados})
-    with (pasta / 'fatias.csv').open('w', newline='', encoding='utf-8') as f:
-        w = csv.DictWriter(f, fieldnames=list(fatias[0]))
-        w.writeheader()
-        w.writerows(fatias)
-    return pasta
 
 
 def resumo():

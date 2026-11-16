@@ -38,6 +38,7 @@ a.add_argument('--cca', action='store_true')
 a.add_argument('--mascara', choices=abdome.MASCARAS, default='indice0')
 a.add_argument('--protocolo', choices=abdome.PROTOCOLOS, default='e12',
                help="'oficial' liga a CCA, usa 3 fatias de suporte e mede todas as fatias com o rim")
+a.add_argument('--sem-cache', action='store_true', help='recodifica o suporte a cada query (como antes do cache)')
 a.add_argument('--fatias-max', type=int, default=8)
 a.add_argument('--suportes', type=int, nargs='*', default=None, help='ensaio: só estes pacientes-suporte')
 a.add_argument('--sem-registro', action='store_true', help='ensaio: não grava em resultados/abdome.csv')
@@ -84,7 +85,7 @@ else:
         else:
             sam[0].model = alp
         abdome.avaliar(alp, sam, mod, entrada, dict(base, passo=passo, obs=args.obs), fatias_max=args.fatias_max,
-                       suportes=args.suportes, registrar=not args.sem_registro, protocolo=args.protocolo,
+                       suportes=args.suportes, registrar=not args.sem_registro, protocolo=args.protocolo, cache_suporte=not args.sem_cache,
                        rotulo=f"{modelo}_{passo or 'pre'}_e{estagio}{'_cca' if args.cca else ''}"
                               f"{'_score' if args.mascara == 'maior_score' else ''}"
                               f"{'_oficial' if args.protocolo == 'oficial' else ''}")
